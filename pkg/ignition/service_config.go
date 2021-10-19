@@ -47,9 +47,8 @@ ExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc
 [Install]
 WantedBy=multi-user.target
 `
-	unit := fmt.Sprintf(unitTemplate, b.ironicAgentImage, flags, b.ironicAgentImage)
+	contents := fmt.Sprintf(unitTemplate, b.ironicAgentImage, flags, b.ironicAgentImage)
 
-	contents := "data:;base64," + strings.ReplaceAll(strings.TrimSpace(unit), "\n", "\\n")
 	return ignition_config_types_32.Unit{
 		Name:     "ironic-agent.service",
 		Enabled:  pointer.BoolPtr(true),
