@@ -3,6 +3,7 @@ package ignition
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 
@@ -30,9 +31,10 @@ type ignitionBuilder struct {
 	httpProxy             string
 	httpsProxy            string
 	noProxy               string
+	hostname              string
 }
 
-func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions, httpProxy, httpsProxy, noProxy string) (*ignitionBuilder, error) {
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string) (*ignitionBuilder, error) {
 	if ironicBaseURL == "" {
 		return nil, errors.New("ironicBaseURL is required")
 	}
@@ -51,6 +53,7 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ir
 		httpProxy:             httpProxy,
 		httpsProxy:            httpsProxy,
 		noProxy:               noProxy,
+		hostname:              hostname,
 	}, nil
 }
 
@@ -99,10 +102,15 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 		"/etc/NetworkManager/conf.d/clientid.conf",
 		0644, false,
 		[]byte("[connection]\nipv6.dhcp-duid=ll\nipv6.dhcp-iaid=mac")))
+
+	update_hostname := fmt.Sprintf(`
+	[[ "$DHCP6_FQDN_FQDN" =~ "." ]] && hostnamectl set-hostname --static --transient $DHCP6_FQDN_FQDN 
+	[[ "$(< /proc/sys/kernel/hostname)" =~ (localhost|localhost.localdomain) ]] && hostnamectl set-hostname --transient %s`, b.hostname)
+
 	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
 		"/etc/NetworkManager/dispatcher.d/01-hostname",
 		0744, false,
-		[]byte("[[ \"$DHCP6_FQDN_FQDN\" =~ \".\" ]] && hostnamectl set-hostname --static --transient $DHCP6_FQDN_FQDN")))
+		[]byte(update_hostname)))
 
 	if len(b.registriesConf) > 0 {
 		registriesFile := ignitionFileEmbed("/etc/containers/registries.conf",

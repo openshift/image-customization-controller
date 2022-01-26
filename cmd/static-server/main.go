@@ -69,6 +69,7 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 		if err != nil {
 			return errors.WithMessagef(err, "problem reading %s", path.Join(nmstateDir, f.Name()))
 		}
+		hostname := strings.TrimSuffix(f.Name(), path.Ext(f.Name()))
 		igBuilder, err := ignition.New(b, registries,
 			env.IronicBaseURL,
 			env.IronicAgentImage,
@@ -78,6 +79,7 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 			env.HttpProxy,
 			env.HttpsProxy,
 			env.NoProxy,
+			hostname,
 		)
 		if err != nil {
 			return errors.WithMessage(err, "failed to configure ignition")

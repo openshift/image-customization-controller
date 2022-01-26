@@ -18,7 +18,7 @@ func TestGenerateRegistries(t *testing.T) {
 	builder, err := New([]byte{}, []byte(registries),
 		"http://ironic.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "")
+		"", "", "", "", "", "", "virthost")
 	if err != nil {
 		t.Fatalf("Unexpected error %v", err)
 	}
