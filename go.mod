@@ -24,7 +24,7 @@ require (
 )
 
 replace (
-	github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20220217140404-6b1ecb71984f
-	github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20220217140404-6b1ecb71984f
-	github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20220217140404-6b1ecb71984f
+	github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20220314153030-57fef6af93c7
+	github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20220314153030-57fef6af93c7
+	github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20220314153030-57fef6af93c7
 )
