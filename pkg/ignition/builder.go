@@ -2,11 +2,13 @@ package ignition
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
 
+	"github.com/pkg/errors"
+
+	ignition_config_32 "github.com/coreos/ignition/v2/config/v3_2"
 	ignition_config_types_32 "github.com/coreos/ignition/v2/config/v3_2/types"
 	vpath "github.com/coreos/vcontext/path"
 )
@@ -73,19 +75,19 @@ func (b *ignitionBuilder) ProcessNetworkState() (error, string) {
 	return nil, ""
 }
 
-func (b *ignitionBuilder) Generate() ([]byte, error) {
+func (b *ignitionBuilder) generate() (ignition_config_types_32.Config, error) {
 	netFiles := []ignition_config_types_32.File{}
 	if len(b.nmStateData) > 0 {
 		nmstatectl := exec.Command("nmstatectl", "gc", "-")
 		nmstatectl.Stdin = strings.NewReader(string(b.nmStateData))
 		out, err := nmstatectl.Output()
 		if err != nil {
-			return nil, err
+			return ignition_config_types_32.Config{}, err
 		}
 
 		netFiles, err = nmstateOutputToFiles(out)
 		if err != nil {
-			return nil, err
+			return ignition_config_types_32.Config{}, err
 		}
 	}
 
@@ -141,8 +143,39 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 
 	report := config.Storage.Validate(vpath.ContextPath{})
 	if report.IsFatal() {
-		return nil, errors.New(report.String())
+		return config, errors.New(report.String())
+	}
+
+	return config, nil
+}
+
+func (b *ignitionBuilder) generateAndMergeWith(other []byte) (ignition_config_types_32.Config, error) {
+	thisConfig, err := b.generate()
+	if err != nil {
+		return thisConfig, err
+	}
+
+	if len(other) == 0 {
+		return thisConfig, nil
+	}
+
+	otherConfig, report, err := ignition_config_32.ParseCompatibleVersion(other)
+	if err != nil {
+		return thisConfig, errors.Wrapf(err, "could not parse external configuration: %s", report.String())
+	}
+
+	return ignition_config_32.Merge(otherConfig, thisConfig), nil
+}
+
+func (b *ignitionBuilder) GenerateAndMergeWith(other []byte) ([]byte, error) {
+	config, err := b.generateAndMergeWith(other)
+	if err != nil {
+		return nil, err
 	}
 
 	return json.Marshal(config)
+}
+
+func (b *ignitionBuilder) Generate() ([]byte, error) {
+	return b.GenerateAndMergeWith(nil)
 }

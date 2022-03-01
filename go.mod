@@ -14,6 +14,7 @@ require (
 	github.com/metal3-io/baremetal-operator/apis v0.0.0
 	github.com/openshift/assisted-image-service v0.0.0-20220301135350-10a987fbc261
 	github.com/pkg/errors v0.9.1
+	github.com/stretchr/testify v1.7.0
 	github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb
 	k8s.io/api v0.22.1
 	k8s.io/apimachinery v0.22.1

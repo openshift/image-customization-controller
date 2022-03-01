@@ -18,21 +18,35 @@ github.com/bombsimon/wsl/v3
 github.com/cavaliercoder/go-cpio
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
+# github.com/coreos/go-json v0.0.0-20170920214419-6a2fe990e083
+github.com/coreos/go-json
 # github.com/coreos/go-semver v0.3.0
 github.com/coreos/go-semver/semver
 # github.com/coreos/go-systemd/v22 v22.0.0
 github.com/coreos/go-systemd/v22/unit
 # github.com/coreos/ignition/v2 v2.12.0
 ## explicit
+github.com/coreos/ignition/v2/config/merge
 github.com/coreos/ignition/v2/config/shared/errors
 github.com/coreos/ignition/v2/config/shared/validations
+github.com/coreos/ignition/v2/config/translate
 github.com/coreos/ignition/v2/config/util
+github.com/coreos/ignition/v2/config/v3_0
+github.com/coreos/ignition/v2/config/v3_0/types
+github.com/coreos/ignition/v2/config/v3_1
+github.com/coreos/ignition/v2/config/v3_1/translate
+github.com/coreos/ignition/v2/config/v3_1/types
+github.com/coreos/ignition/v2/config/v3_2
+github.com/coreos/ignition/v2/config/v3_2/translate
 github.com/coreos/ignition/v2/config/v3_2/types
+github.com/coreos/ignition/v2/config/validate
 # github.com/coreos/vcontext v0.0.0-20210407161507-4ee6c745c8bd
 ## explicit
+github.com/coreos/vcontext/json
 github.com/coreos/vcontext/path
 github.com/coreos/vcontext/report
 github.com/coreos/vcontext/tree
+github.com/coreos/vcontext/validate
 # github.com/daixiang0/gci v0.2.4
 github.com/daixiang0/gci/pkg/gci
 # github.com/davecgh/go-spew v1.1.1
@@ -352,6 +366,7 @@ github.com/ssgreg/nlreturn/v2/pkg/nlreturn
 # github.com/stretchr/objx v0.2.0
 github.com/stretchr/objx
 # github.com/stretchr/testify v1.7.0
+## explicit
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 # github.com/subosito/gotenv v1.2.0
