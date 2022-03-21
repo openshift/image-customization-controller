@@ -1,10 +1,14 @@
 package imageprovider
 
 import (
-	"errors"
 	"fmt"
+	"io"
+	"net/http"
 
 	"github.com/go-logr/logr"
+	"github.com/pkg/errors"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	metal3 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/imageprovider"
@@ -18,6 +22,11 @@ type rhcosImageProvider struct {
 	EnvInputs      *env.EnvInputs
 	RegistriesConf []byte
 }
+
+const (
+	infraEnvLabel              string = "infraenvs.agent-install.openshift.io"
+	ignitionOverrideAnnotation string = "baremetal.openshift.io/ignition-override-uri"
+)
 
 func NewRHCOSImageProvider(imageServer imagehandler.ImageHandler, inputs *env.EnvInputs) imageprovider.ImageProvider {
 	registries, err := inputs.RegistriesConf()
@@ -45,7 +54,7 @@ func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 	}
 }
 
-func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData, hostname string) ([]byte, error) {
+func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData, hostname string, mergeWith []byte) ([]byte, error) {
 	nmstateData := networkData["nmstate"]
 
 	builder, err := ignition.New(nmstateData, ip.RegistriesConf,
@@ -71,7 +80,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 		return nil, err
 	}
 
-	return builder.Generate()
+	return builder.GenerateAndMergeWith(mergeWith)
 }
 
 func imageKey(data imageprovider.ImageData) string {
@@ -84,8 +93,38 @@ func imageKey(data imageprovider.ImageData) string {
 	)
 }
 
+func getIgnitionOverride(imageMetadata *metav1.ObjectMeta, log logr.Logger) ([]byte, error) {
+	if overrideURI, exist := imageMetadata.Annotations[ignitionOverrideAnnotation]; exist {
+		log.Info("using Ignition override when building the image", "host", imageMetadata.Name, "overrideURI", overrideURI)
+		resp, err := http.Get(overrideURI) //#nosec G107
+		if err != nil {
+			return nil, errors.Wrap(err, "could not download Ignition override")
+		}
+		defer resp.Body.Close()
+
+		override, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not download Ignition override")
+		}
+
+		return override, nil
+	}
+
+	if infraEnvName, useInfraEnv := imageMetadata.Labels[infraEnvLabel]; useInfraEnv {
+		log.Info("host is using an InfraEnv, waiting for Ignition override", "host", imageMetadata.Name, "infraEnv", infraEnvName)
+		return nil, imageprovider.ImageNotReady{}
+	}
+
+	return nil, nil
+}
+
 func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkData imageprovider.NetworkData, log logr.Logger) (string, error) {
-	ignitionConfig, err := ip.buildIgnitionConfig(networkData, data.ImageMetadata.Name)
+	mergeWith, err := getIgnitionOverride(data.ImageMetadata, log)
+	if err != nil {
+		return "", err
+	}
+
+	ignitionConfig, err := ip.buildIgnitionConfig(networkData, data.ImageMetadata.Name, mergeWith)
 	if err != nil {
 		return "", err
 	}
