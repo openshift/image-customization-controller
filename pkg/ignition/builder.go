@@ -1,6 +1,7 @@
 package ignition
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 
 	ignition_config_types_32 "github.com/coreos/ignition/v2/config/v3_2/types"
 	vpath "github.com/coreos/vcontext/path"
+
+	"github.com/openshift/image-customization-controller/pkg/env"
 )
 
 const (
@@ -28,13 +31,11 @@ type ignitionBuilder struct {
 	ironicRAMDiskSSHKey   string
 	networkKeyFiles       []byte
 	ipOptions             string
-	httpProxy             string
-	httpsProxy            string
-	noProxy               string
+	proxy                 env.ProxyConfig
 	hostname              string
 }
 
-func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string) (*ignitionBuilder, error) {
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, proxy env.ProxyConfig, hostname string) (*ignitionBuilder, error) {
 	if ironicBaseURL == "" {
 		return nil, errors.New("ironicBaseURL is required")
 	}
@@ -50,9 +51,7 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ir
 		ironicAgentPullSecret: ironicAgentPullSecret,
 		ironicRAMDiskSSHKey:   ironicRAMDiskSSHKey,
 		ipOptions:             ipOptions,
-		httpProxy:             httpProxy,
-		httpsProxy:            httpsProxy,
-		noProxy:               noProxy,
+		proxy:                 proxy,
 		hostname:              hostname,
 	}, nil
 }
@@ -116,6 +115,11 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 	}
 
 	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
+		"/etc/systemd/system.conf.d/10-default-env.conf",
+		0644, false,
+		b.defaultEnv()))
+
+	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
 		"/etc/NetworkManager/conf.d/clientid.conf",
 		0644, false,
 		[]byte("[connection]\nipv6.dhcp-duid=ll\nipv6.dhcp-iaid=mac")))
@@ -143,4 +147,20 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 	}
 
 	return json.Marshal(config)
+}
+
+func (b *ignitionBuilder) defaultEnv() []byte {
+	buf := bytes.NewBufferString("[Manager]\n")
+
+	setEnv := func(envVar, value string) {
+		if value != "" {
+			buf.WriteString(fmt.Sprintf("DefaultEnvironment=%s=\"%s\"\n",
+				envVar, value))
+		}
+	}
+
+	setEnv("HTTP_PROXY", b.proxy.HttpProxy)
+	setEnv("HTTPS_PROXY", b.proxy.HttpsProxy)
+	setEnv("NO_PROXY", b.proxy.NoProxy)
+	return buf.Bytes()
 }

@@ -54,9 +54,20 @@ func TestIronicAgentService(t *testing.T) {
 			ironicAgentImage:      "http://example.com/foo:latest",
 			ironicAgentPullSecret: "foo",
 			want: ignition_config_types_32.Unit{
-				Name:     "ironic-agent.service",
-				Enabled:  pointer.BoolPtr(true),
-				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nEnvironment=\"HTTP_PROXY=\"\nEnvironment=\"HTTPS_PROXY=\"\nEnvironment=\"NO_PROXY=\"\nTimeoutStartSec=0\nRestart=on-failure\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json\nExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --env \"IPA_COREOS_IP_OPTIONS=ip=dhcp6\" --env IPA_COREOS_COPY_NETWORK=false --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
+				Name:    "ironic-agent.service",
+				Enabled: pointer.BoolPtr(true),
+				Contents: pointer.StringPtr(`[Unit]
+Description=Ironic Agent
+After=network-online.target
+Wants=network-online.target
+[Service]
+TimeoutStartSec=0
+Restart=on-failure
+ExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json
+ExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --env "IPA_COREOS_IP_OPTIONS=ip=dhcp6" --env IPA_COREOS_COPY_NETWORK=false --name ironic-agent http://example.com/foo:latest
+[Install]
+WantedBy=multi-user.target
+`),
 			},
 		}}
 	for _, tt := range tests {

@@ -76,9 +76,7 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 			pullSecret,
 			env.IronicRAMDiskSSHKey,
 			env.IpOptions,
-			env.HttpProxy,
-			env.HttpsProxy,
-			env.NoProxy,
+			env.Proxy,
 			hostname,
 		)
 		if err != nil {

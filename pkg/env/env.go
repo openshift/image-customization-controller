@@ -7,6 +7,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+type ProxyConfig struct {
+	HttpProxy  string `envconfig:"HTTP_PROXY"`
+	HttpsProxy string `envconfig:"HTTPS_PROXY"`
+	NoProxy    string `envconfig:"NO_PROXY"`
+}
+
 type EnvInputs struct {
 	DeployISO             string `envconfig:"DEPLOY_ISO" required:"true"`
 	DeployInitrd          string `envconfig:"DEPLOY_INITRD" required:"true"`
@@ -16,9 +22,7 @@ type EnvInputs struct {
 	IronicRAMDiskSSHKey   string `envconfig:"IRONIC_RAMDISK_SSH_KEY"`
 	RegistriesConfPath    string `envconfig:"REGISTRIES_CONF_PATH"`
 	IpOptions             string `envconfig:"IP_OPTIONS"`
-	HttpProxy             string `envconfig:"HTTP_PROXY"`
-	HttpsProxy            string `envconfig:"HTTPS_PROXY"`
-	NoProxy               string `envconfig:"NO_PROXY"`
+	Proxy                 ProxyConfig
 }
 
 func New() (*EnvInputs, error) {

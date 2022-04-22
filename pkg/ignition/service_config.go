@@ -35,9 +35,6 @@ Description=Ironic Agent
 After=network-online.target
 Wants=network-online.target
 [Service]
-Environment="HTTP_PROXY=%s"
-Environment="HTTPS_PROXY=%s"
-Environment="NO_PROXY=%s"
 TimeoutStartSec=0
 Restart=on-failure
 ExecStartPre=/bin/podman pull %s %s
@@ -45,7 +42,7 @@ ExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc
 [Install]
 WantedBy=multi-user.target
 `
-	contents := fmt.Sprintf(unitTemplate, b.httpProxy, b.httpsProxy, b.noProxy, b.ironicAgentImage, flags, b.ipOptions, copyNetwork, b.ironicAgentImage)
+	contents := fmt.Sprintf(unitTemplate, b.ironicAgentImage, flags, b.ipOptions, copyNetwork, b.ironicAgentImage)
 
 	return ignition_config_types_32.Unit{
 		Name:     "ironic-agent.service",
