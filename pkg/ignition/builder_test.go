@@ -41,7 +41,7 @@ func TestGenerateWithMoreFields(t *testing.T) {
 
 	assert.Equal(t, "3.2.0", ignition.Ignition.Version)
 	assert.Len(t, ignition.Systemd.Units, 1)
-	assert.Len(t, ignition.Storage.Files, 5)
+	assert.Len(t, ignition.Storage.Files, 6)
 	assert.Len(t, ignition.Passwd.Users, 1)
 
 	// Sanity-check only
@@ -50,7 +50,8 @@ func TestGenerateWithMoreFields(t *testing.T) {
 	assert.Equal(t, ignition.Storage.Files[1].Path, "/etc/authfile.json")
 	assert.Equal(t, ignition.Storage.Files[2].Path, "/etc/NetworkManager/conf.d/clientid.conf")
 	assert.Equal(t, ignition.Storage.Files[3].Path, "/etc/NetworkManager/dispatcher.d/01-hostname")
-	assert.Equal(t, ignition.Storage.Files[4].Path, "/etc/containers/registries.conf")
+	assert.Equal(t, ignition.Storage.Files[4].Path, "/sysroot/etc/NetworkManager/dispatcher.d/01-hostname")
+	assert.Equal(t, ignition.Storage.Files[5].Path, "/etc/containers/registries.conf")
 	assert.Equal(t, ignition.Passwd.Users[0].Name, "core")
 	assert.Len(t, ignition.Passwd.Users[0].SSHAuthorizedKeys, 1)
 }
