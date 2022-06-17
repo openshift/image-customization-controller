@@ -14,11 +14,7 @@ func (b *ignitionBuilder) IronicAgentConf() ignition_config_types_32.File {
 api_url = %s:6385
 inspection_callback_url = %s:5050/v1/continue
 insecure = True
-
-collect_lldp = True
 enable_vlan_interfaces = %s
-inspection_collectors = default,extra-hardware,logs
-inspection_dhcp_all_interfaces = True
 `
 	contents := fmt.Sprintf(template, b.ironicBaseURL, b.ironicBaseURL, ironicInspectorVlanInterfaces)
 	return ignitionFileEmbed("/etc/ironic-python-agent.conf", 0644, false, []byte(contents))
