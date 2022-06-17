@@ -121,6 +121,11 @@ func (b *ignitionBuilder) GenerateConfig() (config ignition_config_types_32.Conf
 			"/etc/NetworkManager/dispatcher.d/01-hostname",
 			0744, false,
 			[]byte(update_hostname)))
+
+		config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
+			"/sysroot/etc/NetworkManager/dispatcher.d/01-hostname",
+			0744, false,
+			[]byte(update_hostname)))
 	}
 
 	if len(b.registriesConf) > 0 {
