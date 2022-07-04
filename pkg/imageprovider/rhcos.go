@@ -45,7 +45,7 @@ func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 	}
 }
 
-func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData) ([]byte, error) {
+func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData, hostname string) ([]byte, error) {
 	nmstateData := networkData["nmstate"]
 
 	builder, err := ignition.New(nmstateData, ip.RegistriesConf,
@@ -57,6 +57,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 		ip.EnvInputs.HttpProxy,
 		ip.EnvInputs.HttpsProxy,
 		ip.EnvInputs.NoProxy,
+		hostname,
 	)
 	if err != nil {
 		return nil, imageprovider.BuildInvalidError(err)
@@ -84,7 +85,7 @@ func imageKey(data imageprovider.ImageData) string {
 }
 
 func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkData imageprovider.NetworkData, log logr.Logger) (string, error) {
-	ignitionConfig, err := ip.buildIgnitionConfig(networkData)
+	ignitionConfig, err := ip.buildIgnitionConfig(networkData, data.ImageMetadata.Name)
 	if err != nil {
 		return "", err
 	}
