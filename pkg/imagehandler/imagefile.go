@@ -32,7 +32,6 @@ type imageFile struct {
 }
 
 // file interface implementation
-
 var _ fs.File = &imageFile{}
 
 func (f *imageFile) Init(inputFile baseFile) error {
