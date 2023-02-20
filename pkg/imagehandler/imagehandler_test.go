@@ -14,6 +14,8 @@ limitations under the License.
 package imagehandler
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -38,7 +40,7 @@ func nopCloser(stream io.ReadSeeker) io.ReadSeekCloser {
 }
 
 func TestImageHandler(t *testing.T) {
-	req, err := http.NewRequest("GET", "/host-xyz-45-uuid", nil)
+	req, err := http.NewRequest("GET", "/base42/host-xyz-45-uuid", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,10 +50,10 @@ func TestImageHandler(t *testing.T) {
 	rr := httptest.NewRecorder()
 	imageServer := &imageFileSystem{
 		log:     zap.New(zap.UseDevMode(true)),
-		isoFile: &baseIso{baseFileData{filename: "dummyfile.iso", size: 12345}},
+		isoFile: &baseIso{baseFileData{filename: "dummyfile.iso", size: 12345, checkSum: "base42"}},
 		baseURL: baseURL,
 		keys: map[string]string{
-			"host-xyz-45-uuid": "host-xyz-45.iso",
+			"/base42/host-xyz-45-uuid": "host-xyz-45.iso",
 		},
 		images: map[string]*imageFile{
 			"host-xyz-45.iso": {
@@ -93,23 +95,41 @@ func TestNewImageHandler(t *testing.T) {
 
 	ifs := handler.(*imageFileSystem)
 	ifs.isoFile.size = 12345
+	ifs.isoFile.checkSum = "ISO"
 	ifs.initramfsFile.size = 12345
+	ifs.initramfsFile.checkSum = "INITRD"
 
-	url1, err := handler.ServeImage("test-key-1", []byte{}, false, false)
+	testIgn1 := []byte{0x00, 0x01}
+	testIgn2 := []byte{0x01, 0x01}
+	testIgnChanged := []byte{0x01, 0x02}
+
+	url1, err := handler.ServeImage("test-key-1", testIgn1, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	url2, err := handler.ServeImage("test-key-2", []byte{}, true, false)
+	url2, err := handler.ServeImage("test-key-2", testIgn2, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
-	name2 := url2[22:]
+	parsed2, err := url.Parse(url2)
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+
+	name2 := parsed2.Path
 	if ifs.imageFileByName(name2) == nil {
 		t.Errorf("can't look up image file \"%s\"", name2)
 	}
+	if parsed2.Host != "base.test:1234" {
+		t.Errorf("unexpected host %s", parsed2.Host)
+	}
+	expectedPath2 := fmt.Sprintf("/INITRD/%x", sha256.Sum256(testIgn2))
+	if parsed2.Path != expectedPath2 {
+		t.Errorf("path mismatch: expected %s, got %s", expectedPath2, parsed2.Path)
+	}
 
-	url1again, err := handler.ServeImage("test-key-1", []byte{}, false, false)
+	url1again, err := handler.ServeImage("test-key-1", testIgn1, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -118,13 +138,22 @@ func TestNewImageHandler(t *testing.T) {
 		t.Errorf("inconsistent URLs for same key: %s %s", url1, url1again)
 	}
 
-	handler.RemoveImage("test-key-1")
-	url1yetagain, err := handler.ServeImage("test-key-1", []byte{}, false, false)
+	url1again, err = handler.ServeImage("test-key-1", testIgnChanged, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	if url1yetagain == url1 {
-		t.Errorf("same URLs returned after removal: %s", url1yetagain)
+
+	if url1again == url1 {
+		t.Errorf("URL was not changed with new ignition: %s", url1again)
+	}
+
+	handler.RemoveImage("test-key-1")
+	url1yetagain, err := handler.ServeImage("test-key-1", testIgnChanged, false, false)
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+	if url1yetagain != url1again {
+		t.Errorf("URL was changed after removal: %s %s", url1again, url1yetagain)
 	}
 }
 

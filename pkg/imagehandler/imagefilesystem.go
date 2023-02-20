@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
-	"path"
 	"time"
 )
 
@@ -52,7 +51,7 @@ func (f *imageFileSystem) Open(name string) (http.File, error) {
 		return f, nil
 	}
 
-	im := f.imageFileByName(path.Base(name))
+	im := f.imageFileByName(name)
 	if im == nil {
 		return nil, fs.ErrNotExist
 	}

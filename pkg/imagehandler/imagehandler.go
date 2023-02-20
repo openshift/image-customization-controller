@@ -14,13 +14,14 @@ limitations under the License.
 package imagehandler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/url"
 	"sync"
 
 	"github.com/go-logr/logr"
-	"github.com/google/uuid"
 )
 
 type InvalidBaseImageError struct {
@@ -80,34 +81,30 @@ func (f *imageFileSystem) getBaseImage(initramfs bool) baseFile {
 	}
 }
 
-func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {
-	if img, exists := f.images[key]; exists {
-		return img.name, nil
-	}
-	rand, err := uuid.NewRandom()
-	if err == nil {
-		name = rand.String()
-	}
-	return
-}
-
 func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initramfs, static bool) (string, error) {
-	size, err := f.getBaseImage(initramfs).Size()
+	baseImage := f.getBaseImage(initramfs)
+	size, err := baseImage.Size()
 	if err != nil {
 		return "", InvalidBaseImageError{cause: err}
+	}
+
+	var name string
+	if !static {
+		basePath, err := baseImage.CheckSum()
+		if err != nil {
+			return "", InvalidBaseImageError{cause: err}
+		}
+
+		ignitionCheckSum := sha256.Sum256(ignitionContent)
+		name = fmt.Sprintf("/%s/%s", basePath, hex.EncodeToString(ignitionCheckSum[:]))
+	} else {
+		name = fmt.Sprintf("/%s", key)
 	}
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	name := key
-	if !static {
-		name, err = f.getNameForKey(key)
-		if err != nil {
-			return "", err
-		}
-	}
-	p, err := url.Parse(fmt.Sprintf("/%s", name))
+	p, err := url.Parse(name)
 	if err != nil {
 		return "", err
 	}
