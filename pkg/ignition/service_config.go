@@ -39,7 +39,7 @@ Restart=on-failure
 RestartSec=5
 StartLimitIntervalSec=0
 ExecStartPre=/bin/podman pull %s %s
-ExecStart=/bin/podman run --rm --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --env "IPA_COREOS_IP_OPTIONS=%s" --env IPA_COREOS_COPY_NETWORK=%v --name ironic-agent %s
+ExecStart=/bin/podman run --rm --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --uts=host --env "IPA_COREOS_IP_OPTIONS=%s" --env IPA_COREOS_COPY_NETWORK=%v --name ironic-agent %s
 [Install]
 WantedBy=multi-user.target
 `
@@ -57,5 +57,35 @@ func (b *ignitionBuilder) authFile() ignition_config_types_32.File {
 	return ignition_config_types_32.File{
 		Node:          ignition_config_types_32.Node{Path: "/etc/authfile.json"},
 		FileEmbedded1: ignition_config_types_32.FileEmbedded1{Contents: ignition_config_types_32.Resource{Source: &source}},
+	}
+}
+
+func (b *ignitionBuilder) hostNameFixService() ignition_config_types_32.Unit {
+	script := fmt.Sprintf(`
+if [[ "$(hostnamectl hostname)" =~ ^localhost(\.localdomain)?$ ]]; then
+    echo Localhost detected, setting hostname to %[1]s;
+    hostnamectl set-hostname --static --transient "%[1]s";
+    echo "%[1]s" > /etc/hostname;
+fi`, b.hostname)
+
+	script = strings.Replace(script, "\n", " ", -1)
+
+	unitTemplate := `[Unit]
+Description=Fix hostname if it is localhost
+After=network-online.target
+Before=ironic-agent.service
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '%s'
+[Install]
+WantedBy=multi-user.target
+`
+	contents := fmt.Sprintf(unitTemplate, script)
+
+	return ignition_config_types_32.Unit{
+		Name:     "hostname-fix.service",
+		Enabled:  pointer.BoolPtr(true),
+		Contents: &contents,
 	}
 }

@@ -18,7 +18,7 @@ func TestGenerateStructure(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, "3.2.0", ignition.Ignition.Version)
-	assert.Len(t, ignition.Systemd.Units, 1)
+	assert.Len(t, ignition.Systemd.Units, 2)
 	assert.Len(t, ignition.Storage.Files, 2)
 	assert.Len(t, ignition.Passwd.Users, 0)
 
@@ -41,7 +41,7 @@ func TestGenerateWithMoreFields(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, "3.2.0", ignition.Ignition.Version)
-	assert.Len(t, ignition.Systemd.Units, 1)
+	assert.Len(t, ignition.Systemd.Units, 2)
 	assert.Len(t, ignition.Storage.Files, 5)
 	assert.Len(t, ignition.Passwd.Users, 1)
 

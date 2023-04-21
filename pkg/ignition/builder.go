@@ -97,7 +97,10 @@ func (b *ignitionBuilder) GenerateConfig() (config ignition_config_types_32.Conf
 	config.Ignition.Version = "3.2.0"
 	config.Storage.Files = []ignition_config_types_32.File{b.IronicAgentConf()}
 	config.Storage.Files = append(config.Storage.Files, netFiles...)
-	config.Systemd.Units = []ignition_config_types_32.Unit{b.IronicAgentService(len(netFiles) > 0)}
+	config.Systemd.Units = []ignition_config_types_32.Unit{
+		b.IronicAgentService(len(netFiles) > 0),
+		b.hostNameFixService(),
+	}
 
 	if b.ironicAgentPullSecret != "" {
 		config.Storage.Files = append(config.Storage.Files, b.authFile())
