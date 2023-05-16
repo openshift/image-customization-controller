@@ -3,7 +3,6 @@ package ignition
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os/exec"
 	"strings"
 
@@ -116,17 +115,6 @@ func (b *ignitionBuilder) GenerateConfig() (config ignition_config_types_32.Conf
 		"/etc/NetworkManager/conf.d/clientid.conf",
 		0644, false,
 		[]byte("[connection]\nipv6.dhcp-duid=ll\nipv6.dhcp-iaid=mac")))
-
-	if b.hostname != "" {
-		update_hostname := fmt.Sprintf(`
-	    [[ "$DHCP6_FQDN_FQDN" =~ "." ]] && hostnamectl set-hostname --static --transient $DHCP6_FQDN_FQDN 
-	    [[ "$(< /proc/sys/kernel/hostname)" =~ (localhost|localhost.localdomain) ]] && hostnamectl set-hostname --transient %s`, b.hostname)
-
-		config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
-			"/etc/NetworkManager/dispatcher.d/01-hostname",
-			0744, false,
-			[]byte(update_hostname)))
-	}
 
 	if len(b.registriesConf) > 0 {
 		registriesFile := ignitionFileEmbed("/etc/containers/registries.conf",

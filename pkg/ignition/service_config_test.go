@@ -60,7 +60,7 @@ func TestIronicAgentService(t *testing.T) {
 			want: ignition_config_types_32.Unit{
 				Name:     "ironic-agent.service",
 				Enabled:  pointer.BoolPtr(true),
-				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nEnvironment=\"HTTP_PROXY=\"\nEnvironment=\"HTTPS_PROXY=\"\nEnvironment=\"NO_PROXY=\"\nTimeoutStartSec=0\nRestart=on-failure\nRestartSec=5\nStartLimitIntervalSec=0\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json\nExecStart=/bin/podman run --rm --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --env \"IPA_COREOS_IP_OPTIONS=ip=dhcp6\" --env IPA_COREOS_COPY_NETWORK=false --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
+				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nEnvironment=\"HTTP_PROXY=\"\nEnvironment=\"HTTPS_PROXY=\"\nEnvironment=\"NO_PROXY=\"\nTimeoutStartSec=0\nRestart=on-failure\nRestartSec=5\nStartLimitIntervalSec=0\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json\nExecStart=/bin/podman run --rm --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --env \"IPA_COREOS_IP_OPTIONS=ip=dhcp6\" --env IPA_COREOS_COPY_NETWORK=false --env \"IPA_DEFAULT_HOSTNAME=my-host\" --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
 			},
 		},
 		{
@@ -69,7 +69,7 @@ func TestIronicAgentService(t *testing.T) {
 			want: ignition_config_types_32.Unit{
 				Name:     "ironic-agent.service",
 				Enabled:  pointer.BoolPtr(true),
-				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nEnvironment=\"HTTP_PROXY=\"\nEnvironment=\"HTTPS_PROXY=\"\nEnvironment=\"NO_PROXY=\"\nTimeoutStartSec=0\nRestart=on-failure\nRestartSec=5\nStartLimitIntervalSec=0\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false\nExecStart=/bin/podman run --rm --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --env \"IPA_COREOS_IP_OPTIONS=ip=dhcp6\" --env IPA_COREOS_COPY_NETWORK=false --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
+				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nEnvironment=\"HTTP_PROXY=\"\nEnvironment=\"HTTPS_PROXY=\"\nEnvironment=\"NO_PROXY=\"\nTimeoutStartSec=0\nRestart=on-failure\nRestartSec=5\nStartLimitIntervalSec=0\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false\nExecStart=/bin/podman run --rm --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --env \"IPA_COREOS_IP_OPTIONS=ip=dhcp6\" --env IPA_COREOS_COPY_NETWORK=false --env \"IPA_DEFAULT_HOSTNAME=my-host\" --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
 			},
 		},
 		{
@@ -80,7 +80,7 @@ func TestIronicAgentService(t *testing.T) {
 			want: ignition_config_types_32.Unit{
 				Name:     "ironic-agent.service",
 				Enabled:  pointer.BoolPtr(true),
-				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nEnvironment=\"HTTP_PROXY=\"\nEnvironment=\"HTTPS_PROXY=\"\nEnvironment=\"NO_PROXY=\"\nTimeoutStartSec=0\nRestart=on-failure\nRestartSec=5\nStartLimitIntervalSec=0\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json\nExecStart=/bin/podman run --rm --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --env \"IPA_COREOS_IP_OPTIONS=ip=dhcp6\" --env IPA_COREOS_COPY_NETWORK=true --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
+				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nEnvironment=\"HTTP_PROXY=\"\nEnvironment=\"HTTPS_PROXY=\"\nEnvironment=\"NO_PROXY=\"\nTimeoutStartSec=0\nRestart=on-failure\nRestartSec=5\nStartLimitIntervalSec=0\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json\nExecStart=/bin/podman run --rm --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --env \"IPA_COREOS_IP_OPTIONS=ip=dhcp6\" --env IPA_COREOS_COPY_NETWORK=true --env \"IPA_DEFAULT_HOSTNAME=my-host\" --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
 			},
 		},
 	}
@@ -90,6 +90,7 @@ func TestIronicAgentService(t *testing.T) {
 				ironicAgentImage:      tt.ironicAgentImage,
 				ironicAgentPullSecret: tt.ironicAgentPullSecret,
 				ipOptions:             "ip=dhcp6",
+				hostname:              "my-host",
 			}
 			if got := b.IronicAgentService(tt.copyNetwork); !reflect.DeepEqual(got, tt.want) {
 				t.Error(cmp.Diff(tt.want, got))
