@@ -37,6 +37,7 @@ import (
 
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	metal3iocontroller "github.com/metal3-io/baremetal-operator/controllers/metal3.io"
+	"github.com/metal3-io/baremetal-operator/pkg/secretutils"
 	"github.com/openshift/image-customization-controller/pkg/env"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
 	"github.com/openshift/image-customization-controller/pkg/imageprovider"
@@ -81,11 +82,11 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 	}
 
 	cacheOptions := cache.Options{
-		SelectorsByObject: cache.SelectorsByObject{
+		SelectorsByObject: secretutils.AddSecretSelector(cache.SelectorsByObject{
 			&metal3iov1alpha1.PreprovisioningImage{}: cache.ObjectSelector{
 				Label: labels.NewSelector().Add(*excludeInfraEnv),
 			},
-		},
+		}),
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
