@@ -23,7 +23,6 @@ import (
 	"os"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
@@ -31,12 +30,12 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	metal3iocontroller "github.com/metal3-io/baremetal-operator/controllers/metal3.io"
+	"github.com/metal3-io/baremetal-operator/pkg/secretutils"
 	"github.com/openshift/image-customization-controller/pkg/env"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
 	"github.com/openshift/image-customization-controller/pkg/imageprovider"
@@ -81,19 +80,18 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 	}
 
 	cacheOptions := cache.Options{
-		SelectorsByObject: cache.SelectorsByObject{
-			&metal3iov1alpha1.PreprovisioningImage{}: {
+		SelectorsByObject: secretutils.AddSecretSelector(cache.SelectorsByObject{
+			&metal3iov1alpha1.PreprovisioningImage{}: cache.ObjectSelector{
 				Label: labels.NewSelector().Add(*excludeInfraEnv),
 			},
-		},
+		}),
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                scheme,
-		Port:                  0, // Add flag with default of 9443 when adding webhooks
-		Namespace:             watchNamespace,
-		ClientDisableCacheFor: []client.Object{&corev1.Secret{}},
-		NewCache:              cache.BuilderWithOptions(cacheOptions),
+		Scheme:    scheme,
+		Port:      0, // Add flag with default of 9443 when adding webhooks
+		Namespace: watchNamespace,
+		NewCache:  cache.BuilderWithOptions(cacheOptions),
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

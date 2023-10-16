@@ -84,18 +84,20 @@ func imageKey(data imageprovider.ImageData) string {
 	)
 }
 
-func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkData imageprovider.NetworkData, log logr.Logger) (string, error) {
+func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkData imageprovider.NetworkData, log logr.Logger) (imageprovider.GeneratedImage, error) {
+	generated := imageprovider.GeneratedImage{}
 	ignitionConfig, err := ip.buildIgnitionConfig(networkData, data.ImageMetadata.Name)
 	if err != nil {
-		return "", err
+		return generated, err
 	}
 
 	url, err := ip.ImageHandler.ServeImage(imageKey(data), ignitionConfig,
 		data.Format == metal3.ImageFormatInitRD, false)
 	if errors.As(err, &imagehandler.InvalidBaseImageError{}) {
-		return "", imageprovider.BuildInvalidError(err)
+		return generated, imageprovider.BuildInvalidError(err)
 	}
-	return url, err
+	generated.ImageURL = url
+	return generated, err
 }
 
 func (ip *rhcosImageProvider) DiscardImage(data imageprovider.ImageData) error {

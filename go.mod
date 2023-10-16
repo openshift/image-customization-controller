@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/coreos/ignition/v2 v2.12.0
 	github.com/coreos/vcontext v0.0.0-20210407161507-4ee6c745c8bd
-	github.com/go-logr/logr v0.4.0
+	github.com/go-logr/logr v1.2.0
 	github.com/golangci/golangci-lint v1.50.1
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
@@ -16,12 +16,11 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.0
 	github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb
-	k8s.io/api v0.22.1
-	k8s.io/apimachinery v0.22.1
-	k8s.io/client-go v0.22.1
-	k8s.io/utils v0.0.0-20210802155522-efc7438f0176
-	sigs.k8s.io/controller-runtime v0.9.7
-	sigs.k8s.io/yaml v1.2.0
+	k8s.io/apimachinery v0.23.5
+	k8s.io/client-go v0.23.5
+	k8s.io/utils v0.0.0-20211116205334-6203023598ed
+	sigs.k8s.io/controller-runtime v0.11.2
+	sigs.k8s.io/yaml v1.3.0
 )
 
 require (
@@ -59,14 +58,14 @@ require (
 	github.com/diskfs/go-diskfs v1.2.1-0.20210727185522-a769efacd235 // indirect
 	github.com/esimonov/ifshort v1.0.4 // indirect
 	github.com/ettle/strcase v0.1.1 // indirect
-	github.com/evanphx/json-patch v4.11.0+incompatible // indirect
+	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
 	github.com/firefart/nonamedreturns v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/fzipp/gocyclo v0.6.0 // indirect
 	github.com/go-critic/go-critic v0.6.5 // indirect
-	github.com/go-logr/zapr v0.4.0 // indirect
+	github.com/go-logr/zapr v1.2.0 // indirect
 	github.com/go-toolsmith/astcast v1.0.0 // indirect
 	github.com/go-toolsmith/astcopy v1.0.2 // indirect
 	github.com/go-toolsmith/astequal v1.0.3 // indirect
@@ -193,7 +192,7 @@ require (
 	gitlab.com/bosi/decorder v0.2.3 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
-	go.uber.org/zap v1.19.0 // indirect
+	go.uber.org/zap v1.19.1 // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/exp/typeparams v0.0.0-20220827204233-334a2380cb91 // indirect
 	golang.org/x/mod v0.6.0 // indirect
@@ -214,19 +213,21 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.3.3 // indirect
-	k8s.io/apiextensions-apiserver v0.21.4 // indirect
-	k8s.io/component-base v0.21.4 // indirect
-	k8s.io/klog/v2 v2.9.0 // indirect
-	k8s.io/kube-openapi v0.0.0-20210421082810-95288971da7e // indirect
+	k8s.io/api v0.23.5 // indirect
+	k8s.io/apiextensions-apiserver v0.23.5 // indirect
+	k8s.io/component-base v0.23.5 // indirect
+	k8s.io/klog/v2 v2.30.0 // indirect
+	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
 	mvdan.cc/gofumpt v0.4.0 // indirect
 	mvdan.cc/interfacer v0.0.0-20180901003855-c20040233aed // indirect
 	mvdan.cc/lint v0.0.0-20170908181259-adc824a0674b // indirect
 	mvdan.cc/unparam v0.0.0-20220706161116-678bad134442 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.1.2 // indirect
+	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 )
 
 replace (
-	github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20220217140404-6b1ecb71984f
-	github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20220217140404-6b1ecb71984f
-	github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20220217140404-6b1ecb71984f
+	github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20230824090041-d75786e0f23c
+	github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20230824090041-d75786e0f23c
+	github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20230824090041-d75786e0f23c
 )
