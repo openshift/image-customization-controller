@@ -15,7 +15,6 @@ require (
 	github.com/openshift/assisted-image-service v0.0.0-20211122133112-1552361c0458
 	github.com/pkg/errors v0.9.1
 	github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb
-	k8s.io/api v0.22.1
 	k8s.io/apimachinery v0.22.1
 	k8s.io/client-go v0.22.1
 	k8s.io/utils v0.0.0-20210802155522-efc7438f0176
@@ -24,7 +23,7 @@ require (
 )
 
 replace (
-	github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20211212164328-3070daca9ae3
-	github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20211212164328-3070daca9ae3
-	github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20211212164328-3070daca9ae3
+	github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20230901120629-41872192bc39
+	github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20230901120629-41872192bc39
+	github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20230901120629-41872192bc39
 )

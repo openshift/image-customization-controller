@@ -236,7 +236,7 @@ github.com/mattn/go-isatty
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/mbilski/exhaustivestruct v1.0.1
 github.com/mbilski/exhaustivestruct/pkg/analyzer
-# github.com/metal3-io/baremetal-operator v0.0.0 => github.com/openshift/baremetal-operator v0.0.0-20211212164328-3070daca9ae3
+# github.com/metal3-io/baremetal-operator v0.0.0 => github.com/openshift/baremetal-operator v0.0.0-20230901120629-41872192bc39
 ## explicit
 github.com/metal3-io/baremetal-operator/controllers/metal3.io
 github.com/metal3-io/baremetal-operator/pkg/hardware
@@ -244,10 +244,10 @@ github.com/metal3-io/baremetal-operator/pkg/imageprovider
 github.com/metal3-io/baremetal-operator/pkg/provisioner
 github.com/metal3-io/baremetal-operator/pkg/secretutils
 github.com/metal3-io/baremetal-operator/pkg/utils
-# github.com/metal3-io/baremetal-operator/apis v0.0.0 => github.com/openshift/baremetal-operator/apis v0.0.0-20211212164328-3070daca9ae3
+# github.com/metal3-io/baremetal-operator/apis v0.0.0 => github.com/openshift/baremetal-operator/apis v0.0.0-20230901120629-41872192bc39
 ## explicit
 github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1
-# github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.0.0 => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20211212164328-3070daca9ae3
+# github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.0.0 => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20230901120629-41872192bc39
 github.com/metal3-io/baremetal-operator/pkg/hardwareutils/bmc
 # github.com/mitchellh/go-homedir v1.1.0
 github.com/mitchellh/go-homedir
@@ -577,7 +577,6 @@ honnef.co/go/tools/stylecheck
 honnef.co/go/tools/unused
 honnef.co/go/tools/version
 # k8s.io/api v0.22.1
-## explicit
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
 k8s.io/api/admissionregistration/v1
@@ -869,6 +868,6 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.2.0
 ## explicit
 sigs.k8s.io/yaml
-# github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20211212164328-3070daca9ae3
-# github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20211212164328-3070daca9ae3
-# github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20211212164328-3070daca9ae3
+# github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20230901120629-41872192bc39
+# github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20230901120629-41872192bc39
+# github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20230901120629-41872192bc39
