@@ -8,7 +8,7 @@ import (
 	"k8s.io/utils/pointer"
 )
 
-func (b *ignitionBuilder) IronicAgentConf() ignition_config_types_32.File {
+func (b *ignitionBuilder) IronicAgentConf(ironicInspectorVlanInterfaces string) ignition_config_types_32.File {
 	template := `
 [DEFAULT]
 api_url = %s:6385
