@@ -11,7 +11,7 @@ func TestGenerateStructure(t *testing.T) {
 	builder, err := New(nil, nil,
 		"http://ironic.example.com", "",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "")
+		"", "", "", "", "", "", "", "")
 	assert.NoError(t, err)
 
 	ignition, err := builder.GenerateConfig()
@@ -34,7 +34,7 @@ func TestGenerateWithMoreFields(t *testing.T) {
 		"http://ironic.example.com", "http://inspector.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
 		"pull secret", "SSH key", "ip=dhcp42",
-		"proxy me", "", "don't proxy me", "my-host")
+		"proxy me", "", "don't proxy me", "my-host", "")
 	assert.NoError(t, err)
 
 	ignition, err := builder.GenerateConfig()
@@ -70,7 +70,7 @@ func TestGenerateRegistries(t *testing.T) {
 	builder, err := New([]byte{}, []byte(registries),
 		"http://ironic.example.com", "",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "virthost")
+		"", "", "", "", "", "", "virthost", "")
 	if err != nil {
 		t.Fatalf("Unexpected error %v", err)
 	}

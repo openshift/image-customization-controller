@@ -59,6 +59,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 		ip.EnvInputs.HttpsProxy,
 		ip.EnvInputs.NoProxy,
 		hostname,
+		ip.EnvInputs.IronicAgentVlanInterfaces,
 	)
 	if err != nil {
 		return nil, imageprovider.BuildInvalidError(err)
