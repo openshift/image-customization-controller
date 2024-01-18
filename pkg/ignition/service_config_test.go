@@ -20,14 +20,28 @@ func TestIronicPythonAgentConf(t *testing.T) {
 		want                          ignition_config_types_32.File
 	}{
 		{
-			name:                   "basic",
-			ironicBaseURL:          "http://example.com/foo",
-			ironicInspectorBaseURL: "http://example.com/bar",
+			name:                          "basic",
+			ironicBaseURL:                 "http://example.com/foo",
+			ironicInspectorBaseURL:        "http://example.com/bar",
+			ironicInspectorVlanInterfaces: "all",
 			want: ignition_config_types_32.File{
 				Node: ignition_config_types_32.Node{Path: "/etc/ironic-python-agent.conf", Overwrite: &expectedOverwrite},
 				FileEmbedded1: ignition_config_types_32.FileEmbedded1{
 					Contents: ignition_config_types_32.Resource{
 						Source: pointer.StringPtr("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%2Ffoo%3A6385%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%2Fbar%3A5050%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0A")},
+					Mode: &expectedMode},
+			},
+		},
+		{
+			name:                          "basic_no_vlans",
+			ironicBaseURL:                 "http://example.com/foo",
+			ironicInspectorBaseURL:        "http://example.com/bar",
+			ironicInspectorVlanInterfaces: "",
+			want: ignition_config_types_32.File{
+				Node: ignition_config_types_32.Node{Path: "/etc/ironic-python-agent.conf", Overwrite: &expectedOverwrite},
+				FileEmbedded1: ignition_config_types_32.FileEmbedded1{
+					Contents: ignition_config_types_32.Resource{
+						Source: pointer.String("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%2Ffoo%3A6385%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%2Fbar%3A5050%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20%0A")},
 					Mode: &expectedMode},
 			},
 		},
@@ -38,7 +52,7 @@ func TestIronicPythonAgentConf(t *testing.T) {
 				ironicBaseURL:          tt.ironicBaseURL,
 				ironicInspectorBaseURL: tt.ironicInspectorBaseURL,
 			}
-			if got := b.IronicAgentConf(); !reflect.DeepEqual(got, tt.want) {
+			if got := b.IronicAgentConf(tt.ironicInspectorVlanInterfaces); !reflect.DeepEqual(got, tt.want) {
 				t.Error(cmp.Diff(tt.want, got))
 			}
 		})
