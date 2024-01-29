@@ -11,11 +11,6 @@ import (
 	vpath "github.com/coreos/vcontext/path"
 )
 
-const (
-	// https://github.com/openshift/ironic-image/blob/master/scripts/configure-coreos-ipa#L14
-	ironicAgentPodmanFlags = "--tls-verify=false"
-)
-
 type ignitionBuilder struct {
 	nmStateData               []byte
 	registriesConf            []byte
@@ -31,9 +26,12 @@ type ignitionBuilder struct {
 	noProxy                   string
 	hostname                  string
 	ironicAgentVlanInterfaces string
+	ironicAgentPodmanFlags    string
 }
 
-func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string, ironicAgentVlanInterfaces string) (*ignitionBuilder, error) {
+// Base returns a version of ignition that is suitable when IPA is run in a foreign environment, e.g. one defined by the assisted service.
+// This version does not try to modify global settings, such as networking or SSH keys.
+func Base(ironicBaseURL, ironicInspectorBaseURL, ironicAgentImage, httpProxy, httpsProxy, noProxy string) (*ignitionBuilder, error) {
 	if ironicBaseURL == "" {
 		return nil, errors.New("ironicBaseURL is required")
 	}
@@ -45,20 +43,32 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseU
 	}
 
 	return &ignitionBuilder{
-		nmStateData:               nmStateData,
-		registriesConf:            registriesConf,
-		ironicBaseURL:             ironicBaseURL,
-		ironicInspectorBaseURL:    ironicInspectorBaseURL,
-		ironicAgentImage:          ironicAgentImage,
-		ironicAgentPullSecret:     ironicAgentPullSecret,
-		ironicRAMDiskSSHKey:       ironicRAMDiskSSHKey,
-		ipOptions:                 ipOptions,
-		httpProxy:                 httpProxy,
-		httpsProxy:                httpsProxy,
-		noProxy:                   noProxy,
-		hostname:                  hostname,
-		ironicAgentVlanInterfaces: ironicAgentVlanInterfaces,
+		ironicBaseURL:          ironicBaseURL,
+		ironicInspectorBaseURL: ironicInspectorBaseURL,
+		ironicAgentImage:       ironicAgentImage,
+		httpProxy:              httpProxy,
+		httpsProxy:             httpsProxy,
+		noProxy:                noProxy,
 	}, nil
+}
+
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string, ironicAgentVlanInterfaces string) (*ignitionBuilder, error) {
+	base, err := Base(ironicBaseURL, ironicInspectorBaseURL, ironicAgentImage, httpProxy, httpsProxy, noProxy)
+	if err != nil {
+		return nil, err
+	}
+
+	base.nmStateData = nmStateData
+	base.registriesConf = registriesConf
+	base.ironicAgentPullSecret = ironicAgentPullSecret
+	base.ironicRAMDiskSSHKey = ironicRAMDiskSSHKey
+	base.ipOptions = ipOptions
+	base.hostname = hostname
+	base.ironicAgentVlanInterfaces = ironicAgentVlanInterfaces
+	// https://github.com/openshift/ironic-image/blob/master/scripts/configure-coreos-ipa#L14
+	// TODO(dtantsur): consider adding the validaiton
+	base.ironicAgentPodmanFlags = "--tls-verify=false"
+	return base, nil
 }
 
 func (b *ignitionBuilder) ProcessNetworkState() (error, string) {

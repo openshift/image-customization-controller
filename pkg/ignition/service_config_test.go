@@ -115,10 +115,11 @@ func TestIronicAgentService(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := &ignitionBuilder{
-				ironicAgentImage:      tt.ironicAgentImage,
-				ironicAgentPullSecret: tt.ironicAgentPullSecret,
-				ipOptions:             "ip=dhcp6",
-				hostname:              "my-host",
+				ironicAgentImage:       tt.ironicAgentImage,
+				ironicAgentPullSecret:  tt.ironicAgentPullSecret,
+				ipOptions:              "ip=dhcp6",
+				hostname:               "my-host",
+				ironicAgentPodmanFlags: "--tls-verify=false",
 			}
 			if got := b.IronicAgentService(tt.copyNetwork); !reflect.DeepEqual(got, tt.want) {
 				t.Error(cmp.Diff(tt.want, got))
