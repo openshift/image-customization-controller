@@ -17,27 +17,31 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"net/http"
 	"net/url"
 	"os"
 	"time"
 
-	"k8s.io/apimachinery/pkg/labels"
+	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	metal3iocontroller "github.com/metal3-io/baremetal-operator/controllers/metal3.io"
-	"github.com/metal3-io/baremetal-operator/pkg/secretutils"
 	"github.com/openshift/image-customization-controller/pkg/env"
+	"github.com/openshift/image-customization-controller/pkg/ignition"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
 	"github.com/openshift/image-customization-controller/pkg/imageprovider"
 	"github.com/openshift/image-customization-controller/pkg/version"
@@ -50,13 +54,17 @@ var (
 )
 
 const (
-	infraEnvLabel string = "infraenvs.agent-install.openshift.io"
+	infraEnvLabel                string = "infraenvs.agent-install.openshift.io"
+	ignitionSecretName           string = "metal3-ironic-agent-config"
+	ignitionSecretAnnotationName        = "baremetal.openshift.io/metal3-agent-config"
 )
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 
 	_ = metal3iov1alpha1.AddToScheme(scheme)
+
+	_ = corev1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -73,26 +81,105 @@ func setupChecks(mgr ctrl.Manager) error {
 	return nil
 }
 
-func runController(watchNamespace string, imageServer imagehandler.ImageHandler, envInputs *env.EnvInputs, metricsBindAddr string) error {
-	excludeInfraEnv, err := labels.NewRequirement(infraEnvLabel, selection.DoesNotExist, nil)
+type PreprovisioningImageReconciler struct {
+	metal3iocontroller.PreprovisioningImageReconciler
+	envInputs *env.EnvInputs
+}
+
+func (r *PreprovisioningImageReconciler) ensureIgnitionSecret(ctx context.Context, log logr.Logger, req ctrl.Request, img *metal3iov1alpha1.PreprovisioningImage) (ctrl.Result, error) {
+	ignitionBuilder, err := ignition.Base(
+		r.envInputs.IronicBaseURL, r.envInputs.IronicInspectorBaseURL, r.envInputs.IronicAgentImage,
+		r.envInputs.HttpsProxy, r.envInputs.HttpsProxy, r.envInputs.NoProxy)
 	if err != nil {
-		setupLog.Error(err, "cannot create an infraenv label filter")
-		return err
+		return ctrl.Result{}, err
 	}
 
-	cacheOptions := cache.Options{
-		ByObject: secretutils.AddSecretSelector(map[client.Object]cache.ByObject{
-			&metal3iov1alpha1.PreprovisioningImage{}: {
-				Label: labels.NewSelector().Add(*excludeInfraEnv),
+	name := types.NamespacedName{Name: ignitionSecretName, Namespace: req.Namespace}
+	sublog := log.WithValues("ignitionSecret", name)
+
+	secret := &corev1.Secret{}
+	err = r.Get(ctx, name, secret)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			sublog.Error(err, "unexpected error when looking for an ignition secret")
+			return ctrl.Result{Requeue: true}, err
+		}
+
+		sublog.Info("creating secret")
+
+		ignitionData, err := ignitionBuilder.Generate()
+		if err != nil {
+			sublog.Error(err, "cannot generate ignition secret")
+			return ctrl.Result{}, err
+		}
+
+		secret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      ignitionSecretName,
+				Namespace: req.Namespace,
 			},
-		}),
+			Data: map[string][]byte{
+				"userData": ignitionData,
+			},
+		}
+
+		err = r.Create(ctx, secret)
+		if err != nil {
+			sublog.Error(err, "cannot create ignition secret, will retry")
+			// Quite likely transient, possibly a race
+			return ctrl.Result{Requeue: true}, err
+		}
 	}
 
+	patch := client.MergeFrom(img.DeepCopy())
+	if img.Annotations == nil {
+		img.Annotations = make(map[string]string, 1)
+	}
+	img.Annotations[ignitionSecretAnnotationName] = ignitionSecretName
+
+	sublog.Info("linking the ignition secret in the annotation")
+	err = r.PreprovisioningImageReconciler.Client.Patch(ctx, img, patch)
+	// return ctrl.Result{Requeue: err != nil}, err
+	return ctrl.Result{Requeue: true}, err
+}
+
+func (r *PreprovisioningImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("preprovisioningimage", req.NamespacedName)
+
+	img := &metal3iov1alpha1.PreprovisioningImage{}
+	err := r.Get(ctx, req.NamespacedName, img)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			log.Info("PreprovisioningImage not found")
+			err = nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	// if img.Labels[infraEnvLabel] != "" {
+	_ = infraEnvLabel
+	if img.DeletionTimestamp.IsZero() && img.Annotations[ignitionSecretAnnotationName] == "" {
+		return r.ensureIgnitionSecret(ctx, log, req, img)
+	}
+	// Don't handle images with an InfraEnv label beyond the annotation.
+	// return ctrl.Result{}, nil
+	// }
+
+	return r.PreprovisioningImageReconciler.Reconcile(ctx, req)
+}
+
+func (r *PreprovisioningImageReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&metal3iov1alpha1.PreprovisioningImage{}).
+		Owns(&corev1.Secret{}, builder.MatchEveryOwner).
+		Complete(r)
+}
+
+func runController(watchNamespace string, imageServer imagehandler.ImageHandler, envInputs *env.EnvInputs, metricsBindAddr string) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
 		Port:               0, // Add flag with default of 9443 when adding webhooks
 		Namespace:          watchNamespace,
-		Cache:              cacheOptions,
 		MetricsBindAddress: metricsBindAddr,
 	})
 	if err != nil {
@@ -100,12 +187,15 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 		return err
 	}
 
-	imgReconciler := metal3iocontroller.PreprovisioningImageReconciler{
-		Client:        mgr.GetClient(),
-		Log:           ctrl.Log.WithName("controllers").WithName("PreprovisioningImage"),
-		APIReader:     mgr.GetAPIReader(),
-		Scheme:        mgr.GetScheme(),
-		ImageProvider: imageprovider.NewRHCOSImageProvider(imageServer, envInputs),
+	imgReconciler := PreprovisioningImageReconciler{
+		PreprovisioningImageReconciler: metal3iocontroller.PreprovisioningImageReconciler{
+			Client:        mgr.GetClient(),
+			Log:           ctrl.Log.WithName("controllers").WithName("PreprovisioningImage"),
+			APIReader:     mgr.GetAPIReader(),
+			Scheme:        mgr.GetScheme(),
+			ImageProvider: imageprovider.NewRHCOSImageProvider(imageServer, envInputs),
+		},
+		envInputs: envInputs,
 	}
 	if err = (&imgReconciler).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PreprovisioningImage")
