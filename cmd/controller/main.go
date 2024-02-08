@@ -86,7 +86,6 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 		watchNamespaces = map[string]cache.Config{
 			watchNamespace: {},
 		}
-
 	}
 	cacheOptions := cache.Options{
 		ByObject: secretutils.AddSecretSelector(map[client.Object]cache.ByObject{

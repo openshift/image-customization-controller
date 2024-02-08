@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	ignition_config_types_32 "github.com/coreos/ignition/v2/config/v3_2/types"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -83,7 +83,7 @@ WantedBy=multi-user.target
 
 	return ignition_config_types_32.Unit{
 		Name:     "ironic-agent.service",
-		Enabled:  pointer.Bool(true),
+		Enabled:  ptr.To(true),
 		Contents: &contents,
 	}
 }
