@@ -98,7 +98,6 @@ func (hsm *hostStateMachine) ensureCapacity(info *reconcileInfo, state metal3api
 func (hsm *hostStateMachine) updateHostStateFrom(initialState metal3api.ProvisioningState,
 	info *reconcileInfo) actionResult {
 	if hsm.NextState != initialState {
-
 		// Check if there is a free slot available when trying to
 		// (de)provision an host - if not the action will be delayed.
 		// The check is limited to only the (de)provisioning states to
@@ -146,7 +145,6 @@ func (hsm *hostStateMachine) updateHostStateFrom(initialState metal3api.Provisio
 }
 
 func (hsm *hostStateMachine) checkDelayedHost(info *reconcileInfo) actionResult {
-
 	// Check if there's a free slot for hosts that have been previously delayed
 	if info.host.Status.OperationalStatus == metal3api.OperationalStatusDelayed {
 		if actionRes := hsm.ensureCapacity(info, info.host.Status.Provisioning.State); actionRes != nil {
@@ -203,7 +201,7 @@ func (hsm *hostStateMachine) ReconcileState(info *reconcileInfo) (actionRes acti
 	}
 
 	info.log.Info("No handler found for state", "state", initialState)
-	return actionError{fmt.Errorf("No handler found for state \"%s\"", initialState)}
+	return actionError{fmt.Errorf("no handler found for state \"%s\"", initialState)}
 }
 
 func updateBootModeStatus(host *metal3api.BareMetalHost) bool {
@@ -225,6 +223,9 @@ func (hsm *hostStateMachine) checkInitiateDelete(log logr.Logger) bool {
 	switch hsm.NextState {
 	default:
 		hsm.NextState = metal3api.StatePoweringOffBeforeDelete
+	case metal3api.StateRegistering, metal3api.StateUnmanaged, metal3api.StateNone:
+		// Skip the power off before delete
+		hsm.NextState = metal3api.StateDeleting
 	case metal3api.StateProvisioning, metal3api.StateProvisioned:
 		if hsm.Host.OperationalStatus() == metal3api.OperationalStatusDetached {
 			if delayDeleteForDetachedHost(hsm.Host) {
@@ -238,19 +239,27 @@ func (hsm *hostStateMachine) checkInitiateDelete(log logr.Logger) bool {
 			hsm.NextState = metal3api.StateDeprovisioning
 		}
 	case metal3api.StateDeprovisioning:
+		if hsm.Host.Status.ErrorType == metal3api.RegistrationError && hsm.Host.Status.ErrorCount > 3 {
+			hsm.NextState = metal3api.StateDeleting
+			return true
+		}
 		// Allow state machine to run to continue deprovisioning.
 		return false
 	case metal3api.StateDeleting:
 		// Already in deleting state. Allow state machine to run.
 		return false
 	case metal3api.StatePoweringOffBeforeDelete:
+		if hsm.Host.Status.ErrorType == metal3api.RegistrationError && hsm.Host.Status.ErrorCount > 3 {
+			hsm.NextState = metal3api.StateDeleting
+			return true
+		}
 		// Already in powering off state. Allow state machine to run.
 		return false
 	}
 	return true
 }
 
-// hasDetachedAnnotation checks for existence of baremetalhost.metal3.io/detached
+// hasDetachedAnnotation checks for existence of baremetalhost.metal3.io/detached.
 func hasDetachedAnnotation(host *metal3api.BareMetalHost) bool {
 	annotations := host.GetAnnotations()
 	if annotations != nil {
@@ -327,7 +336,7 @@ func (hsm *hostStateMachine) ensureRegistered(info *reconcileInfo) (result actio
 	case metal3api.StateMatchProfile:
 		// Backward compatibility, remove eventually
 		return
-	case metal3api.StateDeleting, metal3api.StatePoweringOffBeforeDelete:
+	case metal3api.StateDeleting:
 		// In the deleting state the whole idea is to de-register the host
 		return
 	case metal3api.StateRegistering:
@@ -389,7 +398,7 @@ func (hsm *hostStateMachine) handleUnmanaged(info *reconcileInfo) actionResult {
 	return actResult
 }
 
-func (hsm *hostStateMachine) handleRegistering(info *reconcileInfo) actionResult {
+func (hsm *hostStateMachine) handleRegistering(_ *reconcileInfo) actionResult {
 	// Getting to the state handler at all means we have successfully
 	// registered using the current BMC credentials, so we can move to the
 	// next state. We will not return to the Registering state, even
@@ -414,7 +423,7 @@ func (hsm *hostStateMachine) handleInspecting(info *reconcileInfo) actionResult 
 	return actResult
 }
 
-func (hsm *hostStateMachine) handleMatchProfile(info *reconcileInfo) actionResult {
+func (hsm *hostStateMachine) handleMatchProfile(_ *reconcileInfo) actionResult {
 	// Backward compatibility, remove eventually
 	hsm.NextState = metal3api.StatePreparing
 	hsm.Host.Status.ErrorCount = 0
@@ -551,15 +560,9 @@ func (hsm *hostStateMachine) handleDeprovisioning(info *reconcileInfo) actionRes
 			hsm.Host.Status.ErrorCount = 0
 		}
 	} else {
-		skipToDelete := func() actionResult {
-			hsm.NextState = metal3api.StateDeleting
-			info.postSaveCallbacks = append(info.postSaveCallbacks, deleteWithoutDeprov.Inc)
-			return actionComplete{}
-		}
-
 		switch r := actResult.(type) {
 		case actionComplete:
-			hsm.NextState = metal3api.StateDeleting
+			hsm.NextState = metal3api.StatePoweringOffBeforeDelete
 			hsm.Host.Status.ErrorCount = 0
 		case actionFailed:
 			// If the provisioner gives up deprovisioning and
@@ -567,14 +570,18 @@ func (hsm *hostStateMachine) handleDeprovisioning(info *reconcileInfo) actionRes
 			if hsm.Host.Status.ErrorCount > 3 {
 				info.log.Info("Giving up on host clean up after 3 attempts. The host may still be operational " +
 					"and cause issues in your clusters. You should clean it up manually now.")
-				return skipToDelete()
+				hsm.NextState = metal3api.StatePoweringOffBeforeDelete
+				info.postSaveCallbacks = append(info.postSaveCallbacks, deleteWithoutDeprov.Inc)
+				return actionComplete{}
 			}
 		case actionError:
 			if r.NeedsRegistration() && !hsm.haveCreds {
 				// If the host is not registered as a node in Ironic and we
 				// lack the credentials to deprovision it, just continue to
 				// delete.
-				return skipToDelete()
+				hsm.NextState = metal3api.StateDeleting
+				info.postSaveCallbacks = append(info.postSaveCallbacks, deleteWithoutPowerOff.Inc)
+				return actionComplete{}
 			}
 		}
 	}

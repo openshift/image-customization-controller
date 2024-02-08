@@ -30,6 +30,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -126,7 +127,6 @@ func (r *BMCEventSubscriptionReconciler) Reconcile(ctx context.Context, request 
 	}
 
 	return
-
 }
 
 func (r *BMCEventSubscriptionReconciler) handleError(ctx context.Context, subscription *metal3api.BMCEventSubscription, e error, message string, requeue bool) (ctrl.Result, error) {
@@ -141,7 +141,6 @@ func (r *BMCEventSubscriptionReconciler) handleError(ctx context.Context, subscr
 	}
 
 	return ctrl.Result{}, errors.Wrap(e, message)
-
 }
 
 func (r *BMCEventSubscriptionReconciler) addFinalizer(ctx context.Context, subscription *metal3api.BMCEventSubscription) error {
@@ -178,7 +177,7 @@ func (r *BMCEventSubscriptionReconciler) createSubscription(ctx context.Context,
 
 	if err != nil {
 		reqLogger.Error(err, "failed to get http headers")
-		subscription.Status.Error = fmt.Sprintf("failed to retrieve HTTP headers secret")
+		subscription.Status.Error = "failed to retrieve HTTP headers secret"
 		updateErr := r.Status().Update(ctx, subscription)
 		if updateErr != nil {
 			return errors.Wrap(updateErr, "failed to update subscription status")
@@ -193,7 +192,7 @@ func (r *BMCEventSubscriptionReconciler) createSubscription(ctx context.Context,
 	return r.Status().Update(ctx, subscription)
 }
 
-func (r *BMCEventSubscriptionReconciler) deleteSubscription(ctx context.Context, prov provisioner.Provisioner, subscription *metal3api.BMCEventSubscription) error {
+func (r *BMCEventSubscriptionReconciler) deleteSubscription(_ context.Context, prov provisioner.Provisioner, subscription *metal3api.BMCEventSubscription) error {
 	reqLogger := r.Log.WithName("bmceventsubscription")
 	reqLogger.Info("deleting subscription")
 
@@ -223,7 +222,7 @@ func (r *BMCEventSubscriptionReconciler) getProvisioner(request ctrl.Request, ho
 		return prov, ready, errors.Wrap(err, "failed to create provisioner")
 	}
 
-	ready, err = prov.IsReady()
+	ready, err = prov.TryInit()
 	if err != nil {
 		return prov, ready, errors.Wrap(err, "failed to check services availability")
 	}
@@ -288,10 +287,11 @@ func (r *BMCEventSubscriptionReconciler) updateEventHandler(e event.UpdateEvent)
 	return true
 }
 
-// SetupWithManager registers the reconciler to be run by the manager
-func (r *BMCEventSubscriptionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+// SetupWithManager registers the reconciler to be run by the manager.
+func (r *BMCEventSubscriptionReconciler) SetupWithManager(mgr ctrl.Manager, maxConcurrentReconcile int) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&metal3api.BMCEventSubscription{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconcile}).
 		WithEventFilter(predicate.Funcs{
 			UpdateFunc: r.updateEventHandler,
 		}).
