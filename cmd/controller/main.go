@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	metal3iocontroller "github.com/metal3-io/baremetal-operator/controllers/metal3.io"
@@ -80,20 +81,26 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 		return err
 	}
 
+	var watchNamespaces map[string]cache.Config
+	if watchNamespace != "" {
+		watchNamespaces = map[string]cache.Config{
+			watchNamespace: {},
+		}
+
+	}
 	cacheOptions := cache.Options{
 		ByObject: secretutils.AddSecretSelector(map[client.Object]cache.ByObject{
 			&metal3iov1alpha1.PreprovisioningImage{}: {
 				Label: labels.NewSelector().Add(*excludeInfraEnv),
 			},
 		}),
+		DefaultNamespaces: watchNamespaces,
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:             scheme,
-		Port:               0, // Add flag with default of 9443 when adding webhooks
-		Namespace:          watchNamespace,
-		Cache:              cacheOptions,
-		MetricsBindAddress: metricsBindAddr,
+		Scheme:  scheme,
+		Cache:   cacheOptions,
+		Metrics: metricsserver.Options{BindAddress: metricsBindAddr},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -107,7 +114,7 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 		Scheme:        mgr.GetScheme(),
 		ImageProvider: imageprovider.NewRHCOSImageProvider(imageServer, envInputs),
 	}
-	if err = (&imgReconciler).SetupWithManager(mgr); err != nil {
+	if err = (&imgReconciler).SetupWithManager(mgr, 1); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PreprovisioningImage")
 		return err
 	}
