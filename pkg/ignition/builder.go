@@ -31,9 +31,10 @@ type ignitionBuilder struct {
 	noProxy                   string
 	hostname                  string
 	ironicAgentVlanInterfaces string
+	additionalNTPServers      []string
 }
 
-func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string, ironicAgentVlanInterfaces string) (*ignitionBuilder, error) {
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string, ironicAgentVlanInterfaces string, additionalNTPServers []string) (*ignitionBuilder, error) {
 	if ironicBaseURL == "" {
 		return nil, errors.New("ironicBaseURL is required")
 	}
@@ -55,6 +56,7 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseU
 		noProxy:                   noProxy,
 		hostname:                  hostname,
 		ironicAgentVlanInterfaces: ironicAgentVlanInterfaces,
+		additionalNTPServers:      additionalNTPServers,
 	}, nil
 }
 
@@ -128,6 +130,18 @@ func (b *ignitionBuilder) GenerateConfig() (config ignition_config_types_32.Conf
 		"/etc/NetworkManager/conf.d/clientid.conf",
 		0644, false,
 		[]byte("[connection]\nipv6.dhcp-duid=ll\nipv6.dhcp-iaid=mac")))
+
+	if len(b.additionalNTPServers) > 0 {
+		additionalChronyConfig := strings.Builder{}
+		for _, server := range b.additionalNTPServers {
+			additionalChronyConfig.WriteString(fmt.Sprintf("\nserver %s iburst", server))
+		}
+		additionalChronyConfig.WriteString("\n")
+		config.Storage.Files = append(config.Storage.Files, ignitionFileEmbedAppend(
+			"/etc/chrony.conf",
+			0644,
+			[]byte(additionalChronyConfig.String())))
+	}
 
 	if b.hostname != "" {
 		update_hostname := fmt.Sprintf(`

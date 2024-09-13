@@ -62,6 +62,11 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 		return errors.WithMessagef(err, "problem reading %s", nmstateDir)
 	}
 
+	additionalNTPServers := []string{}
+	if env.AdditionalNTPServers != "" {
+		additionalNTPServers = strings.Split(env.AdditionalNTPServers, ",")
+	}
+
 	for _, f := range files {
 		if f.IsDir() {
 			continue
@@ -83,6 +88,7 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 			env.NoProxy,
 			hostname,
 			env.IronicAgentVlanInterfaces,
+			additionalNTPServers,
 		)
 		if err != nil {
 			return errors.WithMessage(err, "failed to configure ignition")
