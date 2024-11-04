@@ -11,11 +11,6 @@ import (
 	vpath "github.com/coreos/vcontext/path"
 )
 
-const (
-	// https://github.com/openshift/ironic-image/blob/master/scripts/configure-coreos-ipa#L14
-	ironicAgentPodmanFlags = "--tls-verify=false"
-)
-
 type ignitionBuilder struct {
 	nmStateData               []byte
 	registriesConf            []byte
