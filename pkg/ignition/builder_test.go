@@ -1,6 +1,7 @@
 package ignition
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ func TestGenerateStructure(t *testing.T) {
 	builder, err := New(nil, nil,
 		"http://ironic.example.com", "",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "", "", []string{})
+		"", "", "", "", "", "", "", "", []string{}, "")
 	assert.NoError(t, err)
 
 	ignition, err := builder.GenerateConfig()
@@ -30,11 +31,13 @@ func TestGenerateStructure(t *testing.T) {
 }
 
 func TestGenerateWithMoreFields(t *testing.T) {
+	file, _ := os.CreateTemp("/tmp/", "icc_")
+	defer os.Remove(file.Name())
 	builder, err := New(nil, []byte("I am registry"),
 		"http://ironic.example.com", "http://inspector.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
 		"pull secret", "SSH key", "ip=dhcp42",
-		"proxy me", "", "don't proxy me", "my-host", "", []string{})
+		"proxy me", "", "don't proxy me", "my-host", "", []string{}, file.Name())
 	assert.NoError(t, err)
 
 	ignition, err := builder.GenerateConfig()
@@ -42,7 +45,7 @@ func TestGenerateWithMoreFields(t *testing.T) {
 
 	assert.Equal(t, "3.2.0", ignition.Ignition.Version)
 	assert.Len(t, ignition.Systemd.Units, 1)
-	assert.Len(t, ignition.Storage.Files, 5)
+	assert.Len(t, ignition.Storage.Files, 6)
 	assert.Len(t, ignition.Passwd.Users, 1)
 
 	// Sanity-check only
@@ -50,9 +53,10 @@ func TestGenerateWithMoreFields(t *testing.T) {
 	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "ironic.example.com%3A6385")
 	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "inspector.example.com%3A5050")
 	assert.Equal(t, ignition.Storage.Files[1].Path, "/etc/authfile.json")
-	assert.Equal(t, ignition.Storage.Files[2].Path, "/etc/NetworkManager/conf.d/clientid.conf")
-	assert.Equal(t, ignition.Storage.Files[3].Path, "/etc/NetworkManager/dispatcher.d/01-hostname")
-	assert.Equal(t, ignition.Storage.Files[4].Path, "/etc/containers/registries.conf")
+	assert.Equal(t, ignition.Storage.Files[2].Path, "/etc/pki/ca-trust/source/anchors/ca.crt")
+	assert.Equal(t, ignition.Storage.Files[3].Path, "/etc/NetworkManager/conf.d/clientid.conf")
+	assert.Equal(t, ignition.Storage.Files[4].Path, "/etc/NetworkManager/dispatcher.d/01-hostname")
+	assert.Equal(t, ignition.Storage.Files[5].Path, "/etc/containers/registries.conf")
 	assert.Equal(t, ignition.Passwd.Users[0].Name, "core")
 	assert.Len(t, ignition.Passwd.Users[0].SSHAuthorizedKeys, 1)
 }
@@ -70,7 +74,7 @@ func TestGenerateRegistries(t *testing.T) {
 	builder, err := New([]byte{}, []byte(registries),
 		"http://ironic.example.com", "",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "virthost", "", []string{})
+		"", "", "", "", "", "", "virthost", "", []string{}, "")
 	if err != nil {
 		t.Fatalf("Unexpected error %v", err)
 	}

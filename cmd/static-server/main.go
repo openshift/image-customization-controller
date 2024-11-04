@@ -89,6 +89,7 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 			hostname,
 			env.IronicAgentVlanInterfaces,
 			additionalNTPServers,
+			env.CaBundle,
 		)
 		if err != nil {
 			return errors.WithMessage(err, "failed to configure ignition")
