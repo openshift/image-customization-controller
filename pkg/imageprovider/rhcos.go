@@ -3,6 +3,7 @@ package imageprovider
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 
@@ -48,6 +49,11 @@ func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData, hostname string) ([]byte, error) {
 	nmstateData := networkData["nmstate"]
 
+	additionalNTPServers := []string{}
+	if ip.EnvInputs.AdditionalNTPServers != "" {
+		additionalNTPServers = strings.Split(ip.EnvInputs.AdditionalNTPServers, ",")
+	}
+
 	builder, err := ignition.New(nmstateData, ip.RegistriesConf,
 		ip.EnvInputs.IronicBaseURL,
 		ip.EnvInputs.IronicInspectorBaseURL,
@@ -60,6 +66,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 		ip.EnvInputs.NoProxy,
 		hostname,
 		ip.EnvInputs.IronicAgentVlanInterfaces,
+		additionalNTPServers,
 	)
 	if err != nil {
 		return nil, imageprovider.BuildInvalidError(err)

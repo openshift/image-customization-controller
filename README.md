@@ -48,6 +48,7 @@ the Ignition:
 - `HTTP_PROXY`
 - `HTTPS_PROXY`
 - `NO_PROXY`
+- `ADDITIONAL_NTP_SERVERS` --- comma delimited list
 
 ### Running the Controller
 
