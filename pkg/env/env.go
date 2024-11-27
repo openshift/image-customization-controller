@@ -22,6 +22,7 @@ type EnvInputs struct {
 	HttpsProxy                string `envconfig:"HTTPS_PROXY"`
 	NoProxy                   string `envconfig:"NO_PROXY"`
 	AdditionalNTPServers      string `envconfig:"ADDITIONAL_NTP_SERVERS"`
+	CaBundle                  string `envconfig:"CA_BUNDLE"`
 }
 
 func New() (*EnvInputs, error) {
