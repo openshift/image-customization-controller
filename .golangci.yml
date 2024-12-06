@@ -4,22 +4,19 @@ run:
 linters:
   disable-all: true
   enable: [
-    "govet",
-    "goimports",
-    "gofmt",
-    "gosec",
-    "staticcheck",
-    "deadcode",
     "dupl",
     "errcheck",
-    "structcheck",
-    "unused",
-    "varcheck",
-    "whitespace",
-    "unconvert",
+    "gofmt",
+    "goimports",
+    "gosec",
+    "govet",
     "ineffassign",
     "nakedret",
     "nestif",
+    "staticcheck",
+    "unconvert",
+    "unused",
+    "whitespace",
   ]
 
 linters-settings:
