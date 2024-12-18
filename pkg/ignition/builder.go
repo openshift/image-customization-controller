@@ -4,16 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
 	ignition_config_types_32 "github.com/coreos/ignition/v2/config/v3_2/types"
 	vpath "github.com/coreos/vcontext/path"
-)
-
-const (
-	// https://github.com/openshift/ironic-image/blob/master/scripts/configure-coreos-ipa#L14
-	ironicAgentPodmanFlags = "--tls-verify=false"
 )
 
 type ignitionBuilder struct {
@@ -32,9 +28,10 @@ type ignitionBuilder struct {
 	hostname                  string
 	ironicAgentVlanInterfaces string
 	additionalNTPServers      []string
+	caBundleFile              string
 }
 
-func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string, ironicAgentVlanInterfaces string, additionalNTPServers []string) (*ignitionBuilder, error) {
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string, ironicAgentVlanInterfaces string, additionalNTPServers []string, caBundleFile string) (*ignitionBuilder, error) {
 	if ironicBaseURL == "" {
 		return nil, errors.New("ironicBaseURL is required")
 	}
@@ -57,6 +54,7 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseU
 		hostname:                  hostname,
 		ironicAgentVlanInterfaces: ironicAgentVlanInterfaces,
 		additionalNTPServers:      additionalNTPServers,
+		caBundleFile:              caBundleFile,
 	}, nil
 }
 
@@ -124,6 +122,16 @@ func (b *ignitionBuilder) GenerateConfig() (config ignition_config_types_32.Conf
 				ignition_config_types_32.SSHAuthorizedKey(strings.TrimSpace(b.ironicRAMDiskSSHKey)),
 			},
 		})
+	}
+
+	if b.caBundleFile != "" {
+		data, err := os.ReadFile(b.caBundleFile)
+		if err != nil {
+			return config, err
+		}
+		config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
+			"/etc/pki/ca-trust/source/anchors/ca.crt",
+			0644, false, data))
 	}
 
 	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
