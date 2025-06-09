@@ -1,6 +1,6 @@
 module github.com/openshift/image-customization-controller
 
-go 1.22
+go 1.22.0
 
 require (
 	github.com/coreos/ignition/v2 v2.12.0
