@@ -57,7 +57,7 @@ enable_vlan_interfaces = %s
 }
 
 func (b *ignitionBuilder) IronicAgentService(copyNetwork bool) ignition_config_types_32.Unit {
-	flags := ironicAgentPodmanFlags
+	flags := ""
 	if b.ironicAgentPullSecret != "" {
 		flags += " --authfile=/etc/authfile.json"
 	}
