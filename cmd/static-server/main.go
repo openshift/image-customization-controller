@@ -94,7 +94,7 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 		if err != nil {
 			return errors.WithMessage(err, "failed to configure ignition")
 		}
-		if err, _ := igBuilder.ProcessNetworkState(); err != nil {
+		if _, err := igBuilder.ProcessNetworkState(); err != nil {
 			return errors.WithMessage(err, "failed to convert nmstate data")
 		}
 		ign, err := igBuilder.Generate()

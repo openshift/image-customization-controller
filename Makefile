@@ -3,7 +3,7 @@ GOLANGCI_LINT_CACHE=/tmp/golangci-lint-cache/
 else
 GOLANGCI_LINT_CACHE=${HOME}/.cache/golangci-lint
 endif
-GOLANGCI_LINT ?= GOLANGCI_LINT_CACHE=$(GOLANGCI_LINT_CACHE) go run github.com/golangci/golangci-lint/cmd/golangci-lint
+GOLANGCI_LINT ?= GOLANGCI_LINT_CACHE=$(GOLANGCI_LINT_CACHE) go run vendor/github.com/golangci/golangci-lint/v2/cmd/golangci-lint/main.go
 
 # See pkg/version.go for details
 SOURCE_GIT_COMMIT ?= $(shell git rev-parse --short HEAD)

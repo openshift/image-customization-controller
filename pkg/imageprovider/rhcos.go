@@ -73,7 +73,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 		return nil, imageprovider.BuildInvalidError(err)
 	}
 
-	err, message := builder.ProcessNetworkState()
+	message, err := builder.ProcessNetworkState()
 	if message != "" {
 		return nil, imageprovider.BuildInvalidError(errors.New(message))
 	}

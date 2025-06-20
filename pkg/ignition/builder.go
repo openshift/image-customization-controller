@@ -58,23 +58,23 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseU
 	}, nil
 }
 
-func (b *ignitionBuilder) ProcessNetworkState() (error, string) {
+func (b *ignitionBuilder) ProcessNetworkState() (string, error) {
 	if len(b.nmStateData) > 0 {
 		nmstatectl := exec.Command("nmstatectl", "gc", "/dev/stdin")
 		nmstatectl.Stdin = strings.NewReader(string(b.nmStateData))
 		out, err := nmstatectl.Output()
 		if err != nil {
 			if ee, ok := err.(*exec.ExitError); ok {
-				return err, string(ee.Stderr)
+				return string(ee.Stderr), err
 			}
-			return err, ""
+			return "", err
 		}
 		if string(out) == "--- {}\n" {
-			return nil, "no network configuration"
+			return "no network configuration", nil
 		}
 		b.networkKeyFiles = out
 	}
-	return nil, ""
+	return "", nil
 }
 
 func (b *ignitionBuilder) GenerateConfig() (config ignition_config_types_32.Config, err error) {

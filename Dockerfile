@@ -1,10 +1,10 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.23-openshift-4.19 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.24-openshift-4.20 AS builder
 WORKDIR /go/src/github.com/openshift/image-customization-controller
 COPY . .
 RUN CGO_ENABLED=0 GO111MODULE=on go build -mod=vendor -a -o bin/image-customization-controller cmd/controller/main.go
 RUN CGO_ENABLED=0 GO111MODULE=on go build -mod=vendor -a -o bin/image-customization-server cmd/static-server/main.go
 
-FROM registry.ci.openshift.org/ocp/4.19:base-rhel9
+FROM registry.ci.openshift.org/ocp/4.20:base-rhel9
 COPY --from=builder /go/src/github.com/openshift/image-customization-controller/bin/image-customization-controller /
 COPY --from=builder /go/src/github.com/openshift/image-customization-controller/bin/image-customization-server /
 
