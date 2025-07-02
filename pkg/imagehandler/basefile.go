@@ -1,6 +1,8 @@
 package imagehandler
 
 import (
+	"fmt"
+	"io"
 	"os"
 
 	"github.com/openshift/assisted-image-service/pkg/isoeditor"
@@ -17,12 +19,29 @@ type baseFileData struct {
 }
 
 func (bf *baseFileData) Size() (int64, error) {
-	if bf.size == 0 {
-		fi, err := os.Stat(bf.filename)
+	if bf.size != 0 {
+		return bf.size, nil
+	}
+
+	fi, err := os.Stat(bf.filename)
+	if err != nil {
+		return 0, err
+	}
+	if fi.Mode().IsRegular() {
+		bf.size = fi.Size()
+	} else if fi.Mode()&os.ModeDevice != 0 {
+		file, err := os.Open(bf.filename)
 		if err != nil {
 			return 0, err
 		}
-		bf.size = fi.Size()
+		defer file.Close()
+		size, err := file.Seek(0, io.SeekEnd)
+		if err != nil {
+			return 0, err
+		}
+		bf.size = size
+	} else {
+		return 0, fmt.Errorf("base file %s is not a regular file or block device", bf.filename)
 	}
 	return bf.size, nil
 }
