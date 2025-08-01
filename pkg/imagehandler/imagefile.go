@@ -26,6 +26,7 @@ type imageFile struct {
 	io.ReadSeekCloser
 	name            string
 	size            int64
+	arch            string
 	ignitionContent []byte
 	imageReader     isoeditor.ImageReader
 	initramfs       bool

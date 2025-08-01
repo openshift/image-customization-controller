@@ -47,8 +47,10 @@ func TestImageHandler(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	imageServer := &imageFileSystem{
-		log:     zap.New(zap.UseDevMode(true)),
-		isoFile: &baseIso{baseFileData{filename: "dummyfile.iso", size: 12345}},
+		log: zap.New(zap.UseDevMode(true)),
+		isoFiles: map[string]*baseIso{
+			"host": {baseFileData{filename: "dummyfile.iso", size: 12345}},
+		},
 		baseURL: baseURL,
 		keys: map[string]string{
 			"host-xyz-45-uuid": "host-xyz-45.iso",
@@ -86,20 +88,29 @@ func TestNewImageHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	handler := NewImageHandler(zap.New(zap.UseDevMode(true)),
-		"dummyfile.iso",
-		"dummyfile.initramfs",
-		baseUrl)
 
-	ifs := handler.(*imageFileSystem)
-	ifs.isoFile.size = 12345
-	ifs.initramfsFile.size = 12345
+	ifs := imageFileSystem{
+		baseURL:        baseUrl,
+		keys:           map[string]string{},
+		mu:             &sync.Mutex{},
+		images:         map[string]*imageFile{},
+		isoFiles:       map[string]*baseIso{},
+		initramfsFiles: map[string]*baseInitramfs{},
+	}
 
-	url1, err := handler.ServeImage("test-key-1", []byte{}, false, false)
+	iso := newBaseIso("dummyfile.iso")
+	iso.size = 123456
+	ifs.isoFiles["host"] = iso
+
+	initramfs := newBaseInitramfs("dummyfile.initramfs")
+	initramfs.size = 12345
+	ifs.initramfsFiles["host"] = initramfs
+
+	url1, err := ifs.ServeImage("test-key-1", "", []byte{}, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	url2, err := handler.ServeImage("test-key-2", []byte{}, true, false)
+	url2, err := ifs.ServeImage("test-key-2", "", []byte{}, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -109,7 +120,7 @@ func TestNewImageHandler(t *testing.T) {
 		t.Errorf("can't look up image file \"%s\"", name2)
 	}
 
-	url1again, err := handler.ServeImage("test-key-1", []byte{}, false, false)
+	url1again, err := ifs.ServeImage("test-key-1", "", []byte{}, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -118,8 +129,8 @@ func TestNewImageHandler(t *testing.T) {
 		t.Errorf("inconsistent URLs for same key: %s %s", url1, url1again)
 	}
 
-	handler.RemoveImage("test-key-1")
-	url1yetagain, err := handler.ServeImage("test-key-1", []byte{}, false, false)
+	ifs.RemoveImage("test-key-1")
+	url1yetagain, err := ifs.ServeImage("test-key-1", "", []byte{}, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -133,24 +144,33 @@ func TestNewImageHandlerStatic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	handler := NewImageHandler(zap.New(zap.UseDevMode(true)),
-		"dummyfile.iso",
-		"dummyfile.initramfs",
-		baseUrl)
 
-	ifs := handler.(*imageFileSystem)
-	ifs.isoFile.size = 12345
-	ifs.initramfsFile.size = 12345
+	ifs := imageFileSystem{
+		baseURL:        baseUrl,
+		keys:           map[string]string{},
+		mu:             &sync.Mutex{},
+		images:         map[string]*imageFile{},
+		isoFiles:       map[string]*baseIso{},
+		initramfsFiles: map[string]*baseInitramfs{},
+	}
 
-	url1, err := handler.ServeImage("test-name-1.iso", []byte{}, false, true)
+	iso := newBaseIso("dummyfile.iso")
+	iso.size = 123456
+	ifs.isoFiles["host"] = iso
+
+	initramfs := newBaseInitramfs("dummyfile.initramfs")
+	initramfs.size = 12345
+	ifs.initramfsFiles["host"] = initramfs
+
+	url1, err := ifs.ServeImage("test-name-1.iso", "", []byte{}, false, true)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	url2, err := handler.ServeImage("test-name-2.initramfs", []byte{}, true, true)
+	url2, err := ifs.ServeImage("test-name-2.initramfs", "", []byte{}, true, true)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	url1again, err := handler.ServeImage("test-name-1.iso", []byte{}, false, true)
+	url1again, err := ifs.ServeImage("test-name-1.iso", "", []byte{}, false, true)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -165,5 +185,77 @@ func TestNewImageHandlerStatic(t *testing.T) {
 	}
 	if url1again != url1 {
 		t.Errorf("inconsistent URLs for same key: %s %s", url1, url1again)
+	}
+}
+
+func TestImagePattern(t *testing.T) {
+	tcs := []struct {
+		name      string
+		filename  string
+		arch      string
+		iso       bool
+		initramfs bool
+		error     bool
+	}{
+		{
+
+			name:     "host iso",
+			filename: "ironic-python-agent.iso",
+			arch:     "host",
+			iso:      true,
+		},
+		{
+
+			name:      "host initramfs",
+			filename:  "ironic-python-agent.initramfs",
+			arch:      "host",
+			initramfs: true,
+		},
+		{
+
+			name:      "host initramfs absolute path",
+			filename:  "/shared/ironic-python-agent.initramfs",
+			arch:      "host",
+			initramfs: true,
+		},
+		{
+
+			name:     "aarch64 iso",
+			filename: "ironic-python-agent-aarch64.iso",
+			arch:     "aarch64",
+			iso:      true,
+		},
+		{
+
+			name:      "aarch64 initramfs",
+			filename:  "ironic-python-agent-aarch64.initramfs",
+			arch:      "aarch64",
+			initramfs: true,
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Logf("testing %s", tc.name)
+		ii, err := parseIronicImage(tc.filename)
+
+		if err != nil && !tc.error {
+			t.Errorf("got error: %v", err)
+			return
+		}
+
+		if ii.arch != tc.arch {
+			t.Errorf("arch: expected %s but got %s", tc.arch, ii.arch)
+			return
+		}
+
+		if ii.initramfs != tc.initramfs {
+			t.Errorf("initramfs: expected %t but got %t", tc.initramfs, ii.initramfs)
+			return
+		}
+
+		if ii.iso != tc.iso {
+			t.Errorf("iso: expected %t but got %t", tc.iso, ii.iso)
+			return
+		}
 	}
 }

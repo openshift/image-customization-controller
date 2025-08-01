@@ -17,11 +17,58 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path"
+	"regexp"
 	"sync"
 
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 )
+
+const (
+	imageSharedDir = "/shared/html/images"
+)
+
+var pythonImagePattern = regexp.MustCompile(`ironic-python-agent-(\w+)\.(iso|initramfs)`)
+
+type ironicImage struct {
+	filename  string
+	arch      string
+	iso       bool
+	initramfs bool
+}
+
+func parseIronicImage(filename string) (ironicImage, error) {
+	if path.Base(filename) == "ironic-python-agent.iso" {
+		return ironicImage{
+			filename: filename,
+			arch:     "host",
+			iso:      true,
+		}, nil
+	}
+
+	if path.Base(filename) == "ironic-python-agent.initramfs" {
+		return ironicImage{
+			filename:  filename,
+			arch:      "host",
+			initramfs: true,
+		}, nil
+	}
+
+	matches := pythonImagePattern.FindStringSubmatch(filename)
+
+	if len(matches) != 3 {
+		return ironicImage{}, fmt.Errorf("failed to parse ironic image name: %s", filename)
+	}
+
+	return ironicImage{
+		filename:  filename,
+		arch:      matches[1],
+		iso:       matches[2] == "iso",
+		initramfs: matches[2] == "initramfs",
+	}, nil
+}
 
 type InvalidBaseImageError struct {
 	cause error
@@ -38,13 +85,13 @@ func (ie InvalidBaseImageError) Unwrap() error {
 // imageFileSystem is an http.FileSystem that creates a virtual filesystem of
 // host images.
 type imageFileSystem struct {
-	isoFile       *baseIso
-	initramfsFile *baseInitramfs
-	baseURL       *url.URL
-	keys          map[string]string
-	images        map[string]*imageFile
-	mu            *sync.Mutex
-	log           logr.Logger
+	isoFiles       map[string]*baseIso
+	initramfsFiles map[string]*baseInitramfs
+	baseURL        *url.URL
+	keys           map[string]string
+	images         map[string]*imageFile
+	mu             *sync.Mutex
+	log            logr.Logger
 }
 
 var _ ImageHandler = &imageFileSystem{}
@@ -52,31 +99,70 @@ var _ http.FileSystem = &imageFileSystem{}
 
 type ImageHandler interface {
 	FileSystem() http.FileSystem
-	ServeImage(key string, ignitionContent []byte, initramfs, static bool) (string, error)
+	ServeImage(key string, arch string, ignitionContent []byte, initramfs, static bool) (string, error)
 	RemoveImage(key string)
 }
 
-func NewImageHandler(logger logr.Logger, isoFile, initramfsFile string, baseURL *url.URL) ImageHandler {
-	return &imageFileSystem{
-		log:           logger,
-		isoFile:       newBaseIso(isoFile),
-		initramfsFile: newBaseInitramfs(initramfsFile),
-		baseURL:       baseURL,
-		keys:          map[string]string{},
-		images:        map[string]*imageFile{},
-		mu:            &sync.Mutex{},
+func NewImageHandler(logger logr.Logger, baseURL *url.URL) (ImageHandler, error) {
+	imageFiles, err := os.ReadDir(imageSharedDir)
+
+	if err != nil {
+		return &imageFileSystem{}, err
 	}
+
+	isoFiles := map[string]*baseIso{}
+	initramfsFiles := map[string]*baseInitramfs{}
+
+	logger.Info("reading image files", "dir", imageSharedDir, "len", len(imageFiles))
+	for _, imageFile := range imageFiles {
+		filename := imageFile.Name()
+
+		logger.Info("load image", "imageFile", imageFile.Name())
+
+		ironicImage, err := parseIronicImage(filename)
+		if err != nil {
+			logger.Info("failed to parse ironic image, continuing")
+			continue
+		}
+
+		logger.Info("image loaded", "filename", ironicImage.filename, "arch", ironicImage.arch, "iso", ironicImage.iso, "initramfs", ironicImage.initramfs)
+
+		if ironicImage.iso {
+			isoFiles[ironicImage.arch] = newBaseIso(path.Join(imageSharedDir, filename))
+		}
+
+		if ironicImage.initramfs {
+			initramfsFiles[ironicImage.arch] = newBaseInitramfs(path.Join(imageSharedDir, filename))
+		}
+	}
+
+	return &imageFileSystem{
+		log:            logger,
+		isoFiles:       isoFiles,
+		initramfsFiles: initramfsFiles,
+		baseURL:        baseURL,
+		keys:           map[string]string{},
+		images:         map[string]*imageFile{},
+		mu:             &sync.Mutex{},
+	}, nil
 }
 
 func (f *imageFileSystem) FileSystem() http.FileSystem {
 	return f
 }
 
-func (f *imageFileSystem) getBaseImage(initramfs bool) baseFile {
+func (f *imageFileSystem) getBaseImage(arch string, initramfs bool) (baseFile, bool) {
+	if arch == "" {
+		arch = "host"
+	}
+
+	f.log.Info("getBaseImage", "arch", arch, "initramfs", initramfs)
 	if initramfs {
-		return f.initramfsFile
+		file, found := f.initramfsFiles[arch]
+		return file, found
 	} else {
-		return f.isoFile
+		file, found := f.isoFiles[arch]
+		return file, found
 	}
 }
 
@@ -91,8 +177,15 @@ func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {
 	return
 }
 
-func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initramfs, static bool) (string, error) {
-	size, err := f.getBaseImage(initramfs).Size()
+func (f *imageFileSystem) ServeImage(key string, arch string, ignitionContent []byte, initramfs, static bool) (string, error) {
+	f.log.Info("ServeImage")
+	baseImage, found := f.getBaseImage(arch, initramfs)
+
+	if !found {
+		return "", InvalidBaseImageError{cause: fmt.Errorf("not found")}
+	}
+
+	size, err := baseImage.Size()
 	if err != nil {
 		return "", InvalidBaseImageError{cause: err}
 	}
@@ -116,6 +209,7 @@ func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initram
 		f.keys[name] = key
 		f.images[key] = &imageFile{
 			name:            name,
+			arch:            arch,
 			size:            size,
 			ignitionContent: ignitionContent,
 			initramfs:       initramfs,

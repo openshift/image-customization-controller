@@ -101,7 +101,7 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 		return generated, err
 	}
 
-	url, err := ip.ImageHandler.ServeImage(imageKey(data), ignitionConfig,
+	url, err := ip.ImageHandler.ServeImage(imageKey(data), data.Architecture, ignitionConfig,
 		data.Format == metal3.ImageFormatInitRD, false)
 	if errors.As(err, &imagehandler.InvalidBaseImageError{}) {
 		return generated, imageprovider.BuildInvalidError(err)
