@@ -120,6 +120,7 @@ type ImageHandler interface {
 	FileSystem() http.FileSystem
 	ServeImage(key string, arch string, ignitionContent []byte, initramfs, static bool) (string, error)
 	RemoveImage(key string)
+	HasImagesForArchitecture(arch string) bool
 }
 
 func findOSImageCandidates(logger logr.Logger, envInputs *env.EnvInputs, filePaths []string) []string {
@@ -231,6 +232,10 @@ func (f *imageFileSystem) getBaseImage(arch string, initramfs bool) baseFile {
 	}
 
 	return nil
+}
+
+func (f *imageFileSystem) HasImagesForArchitecture(arch string) bool {
+	return f.getBaseImage(arch, false) != nil && f.getBaseImage(arch, true) != nil
 }
 
 func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {
