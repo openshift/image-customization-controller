@@ -271,7 +271,7 @@ func TestImagePattern(t *testing.T) {
 
 	for _, tc := range tcs {
 		t.Logf("testing %s", tc.name)
-		ii, err := parseDeployImage(envInputs, tc.filename)
+		ii, err := loadOSImage(envInputs, tc.filename)
 
 		if err != nil && !tc.error {
 			t.Errorf("got error: %v", err)
@@ -340,7 +340,7 @@ func TestImagePatternBaseImagesOutsideSharedDir(t *testing.T) {
 
 	for _, tc := range tcs {
 		t.Logf("testing %s", tc.name)
-		ii, err := parseDeployImage(envInputs, tc.filename)
+		ii, err := loadOSImage(envInputs, tc.filename)
 
 		if err != nil && !tc.error {
 			t.Errorf("got error: %v", err)
@@ -412,7 +412,7 @@ func TestImagePatternAutoDiscovery(t *testing.T) {
 
 	for _, tc := range tcs {
 		t.Logf("testing %s", tc.name)
-		ii, err := parseDeployImage(envInputs, tc.filename)
+		ii, err := loadOSImage(envInputs, tc.filename)
 
 		if err != nil && !tc.error {
 			t.Errorf("got error: %v", err)
