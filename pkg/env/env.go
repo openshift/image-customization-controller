@@ -10,7 +10,7 @@ import (
 type EnvInputs struct {
 	DeployISO                 string `envconfig:"DEPLOY_ISO" required:"true"`
 	DeployInitrd              string `envconfig:"DEPLOY_INITRD" required:"true"`
-	ImageSharedDir            string `envconfig:"IMAGE_SHARED_DIR" default:"/shared/html/images"`
+	ImageSharedDir            string `envconfig:"IMAGE_SHARED_DIR"`
 	IronicBaseURL             string `envconfig:"IRONIC_BASE_URL"`
 	IronicInspectorBaseURL    string `envconfig:"IRONIC_INSPECTOR_BASE_URL"`
 	IronicAgentImage          string `envconfig:"IRONIC_AGENT_IMAGE" required:"true"`
