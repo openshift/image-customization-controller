@@ -63,15 +63,15 @@ func matchArchFilename(baseFilename, targetFilename string) *string {
 	return nil
 }
 
-type ironicImage struct {
+type osImage struct {
 	filename string
 	arch     string
 	iso      bool
 }
 
-func parseDeployImage(envInputs *env.EnvInputs, filename string) (ironicImage, error) {
+func loadOSImage(envInputs *env.EnvInputs, filename string) (osImage, error) {
 	if arch := matchArchFilename(envInputs.DeployISO, filename); arch != nil {
-		return ironicImage{
+		return osImage{
 			filename: filename,
 			arch:     *arch,
 			iso:      true,
@@ -79,14 +79,14 @@ func parseDeployImage(envInputs *env.EnvInputs, filename string) (ironicImage, e
 	}
 
 	if arch := matchArchFilename(envInputs.DeployInitrd, filename); arch != nil {
-		return ironicImage{
+		return osImage{
 			filename: filename,
 			arch:     *arch,
 			iso:      false,
 		}, nil
 	}
 
-	return ironicImage{}, fmt.Errorf("failed to parse ironic image name: %s", filename)
+	return osImage{}, fmt.Errorf("failed to load os image name: %s", filename)
 }
 
 type InvalidBaseImageError struct {
@@ -170,18 +170,18 @@ func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInp
 	for _, filePath := range filePaths {
 		logger.Info("load image", "file", filePath)
 
-		ironicImage, err := parseDeployImage(envInputs, filePath)
+		osImage, err := loadOSImage(envInputs, filePath)
 		if err != nil {
-			logger.Info("failed to parse ironic image, continuing", "file", filePath)
+			logger.Info("failed to load os image, continuing", "file", filePath)
 			continue
 		}
 
-		logger.Info("image loaded", "filename", ironicImage.filename, "arch", ironicImage.arch, "iso", ironicImage.iso)
+		logger.Info("image loaded", "filename", osImage.filename, "arch", osImage.arch, "iso", osImage.iso)
 
-		if ironicImage.iso {
-			isoFiles[ironicImage.arch] = newBaseIso(filePath)
+		if osImage.iso {
+			isoFiles[osImage.arch] = newBaseIso(filePath)
 		} else {
-			initramfsFiles[ironicImage.arch] = newBaseInitramfs(filePath)
+			initramfsFiles[osImage.arch] = newBaseInitramfs(filePath)
 		}
 	}
 
