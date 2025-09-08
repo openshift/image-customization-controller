@@ -19,7 +19,9 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -32,7 +34,34 @@ const (
 	hostArchitectureKey = "host"
 )
 
-var deployImagePattern = regexp.MustCompile(`ironic-python-agent_(\w+)\.(iso|initramfs)`)
+// matchArchFilename attempts to match a target filename against a base filename.
+// Returns "host" for exact matches, the architecture for pattern matches, or nil if no match.
+func matchArchFilename(baseFilename, targetFilename string) *string {
+	if baseFilename == "" {
+		return nil
+	}
+
+	if targetFilename == baseFilename {
+		arch := hostArchitectureKey
+		return &arch
+	}
+
+	base := filepath.Base(baseFilename)
+	ext := filepath.Ext(base)
+	baseName := strings.TrimSuffix(base, ext)
+
+	// Create pattern: basename_ARCH.extension
+	patternStr := fmt.Sprintf(`%s_(\w+)%s`, regexp.QuoteMeta(baseName), regexp.QuoteMeta(ext))
+	pattern := regexp.MustCompile(patternStr)
+
+	matches := pattern.FindStringSubmatch(filepath.Base(targetFilename))
+	if len(matches) == 2 {
+		arch := matches[1]
+		return &arch
+	}
+
+	return nil
+}
 
 type ironicImage struct {
 	filename string
@@ -41,33 +70,23 @@ type ironicImage struct {
 }
 
 func parseDeployImage(envInputs *env.EnvInputs, filename string) (ironicImage, error) {
-	if filename == envInputs.DeployISO {
+	if arch := matchArchFilename(envInputs.DeployISO, filename); arch != nil {
 		return ironicImage{
 			filename: filename,
-			arch:     hostArchitectureKey,
+			arch:     *arch,
 			iso:      true,
 		}, nil
 	}
 
-	if filename == envInputs.DeployInitrd {
+	if arch := matchArchFilename(envInputs.DeployInitrd, filename); arch != nil {
 		return ironicImage{
 			filename: filename,
-			arch:     hostArchitectureKey,
+			arch:     *arch,
 			iso:      false,
 		}, nil
 	}
 
-	matches := deployImagePattern.FindStringSubmatch(filename)
-
-	if len(matches) != 3 {
-		return ironicImage{}, fmt.Errorf("failed to parse ironic image name: %s", filename)
-	}
-
-	return ironicImage{
-		filename: filename,
-		arch:     matches[1],
-		iso:      matches[2] == "iso",
-	}, nil
+	return ironicImage{}, fmt.Errorf("failed to parse ironic image name: %s", filename)
 }
 
 type InvalidBaseImageError struct {

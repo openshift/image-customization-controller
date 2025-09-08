@@ -192,8 +192,8 @@ func TestNewImageHandlerStatic(t *testing.T) {
 
 func TestImagePattern(t *testing.T) {
 	envInputs := &env.EnvInputs{
-		DeployISO:    "/shared/ironic-python-agent.iso",
-		DeployInitrd: "/shared/ironic-python-agent.initramfs",
+		DeployISO:    "/config/ipa.iso",
+		DeployInitrd: "/config/ipa.initramfs",
 	}
 
 	tcs := []struct {
@@ -204,36 +204,52 @@ func TestImagePattern(t *testing.T) {
 		error    bool
 	}{
 		{
-
-			name:     "host iso",
-			filename: envInputs.DeployISO,
+			name:     "host iso - exact path match",
+			filename: "/config/ipa.iso",
 			arch:     "host",
 			iso:      true,
 		},
 		{
-
-			name:     "host initramfs",
-			filename: envInputs.DeployInitrd,
+			name:     "host initramfs - exact path match",
+			filename: "/config/ipa.initramfs",
 			arch:     "host",
 		},
 		{
-
-			name:     "host initramfs absolute path",
-			filename: "/shared/ironic-python-agent.initramfs",
-			arch:     "host",
-		},
-		{
-
-			name:     "aarch64 iso",
-			filename: "ironic-python-agent_aarch64.iso",
+			name:     "aarch64 iso - same directory as config",
+			filename: "/config/ipa_aarch64.iso",
 			arch:     "aarch64",
 			iso:      true,
 		},
 		{
-
-			name:     "aarch64 initramfs",
-			filename: "ironic-python-agent_aarch64.initramfs",
+			name:     "aarch64 initramfs - different directory from config",
+			filename: "/images/ipa_aarch64.initramfs",
 			arch:     "aarch64",
+		},
+		{
+			name:     "x86_64 iso - different directory from config",
+			filename: "/images/ipa_x86_64.iso",
+			arch:     "x86_64",
+			iso:      true,
+		},
+		{
+			name:     "x86_64 initramfs - relative path",
+			filename: "ipa_x86_64.initramfs",
+			arch:     "x86_64",
+		},
+		{
+			name:     "invalid filename - different base name",
+			filename: "/images/different-file_x86_64.iso",
+			error:    true,
+		},
+		{
+			name:     "invalid filename - different base name with arch pattern",
+			filename: "different-file_aarch64.initramfs",
+			error:    true,
+		},
+		{
+			name:     "invalid filename - no arch pattern",
+			filename: "some-other-file.iso",
+			error:    true,
 		},
 	}
 
@@ -244,6 +260,15 @@ func TestImagePattern(t *testing.T) {
 		if err != nil && !tc.error {
 			t.Errorf("got error: %v", err)
 			return
+		}
+
+		if err == nil && tc.error {
+			t.Errorf("expected error but got none")
+			return
+		}
+
+		if tc.error {
+			continue
 		}
 
 		if ii.arch != tc.arch {
