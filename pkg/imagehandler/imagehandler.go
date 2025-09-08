@@ -50,8 +50,8 @@ func matchArchFilename(baseFilename, targetFilename string) *string {
 	ext := filepath.Ext(base)
 	baseName := strings.TrimSuffix(base, ext)
 
-	// Create pattern: basename_ARCH.extension
-	patternStr := fmt.Sprintf(`%s_(\w+)%s`, regexp.QuoteMeta(baseName), regexp.QuoteMeta(ext))
+	// Create pattern: basename[_.]ARCH.extension
+	patternStr := fmt.Sprintf(`%s[_.](\w+)%s`, regexp.QuoteMeta(baseName), regexp.QuoteMeta(ext))
 	pattern := regexp.MustCompile(patternStr)
 
 	matches := pattern.FindStringSubmatch(filepath.Base(targetFilename))

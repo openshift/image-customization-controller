@@ -237,6 +237,17 @@ func TestImagePattern(t *testing.T) {
 			arch:     "x86_64",
 		},
 		{
+			name:     "aarch64 iso - period separator",
+			filename: "ipa.aarch64.iso",
+			arch:     "aarch64",
+			iso:      true,
+		},
+		{
+			name:     "x86_64 initramfs - period separator",
+			filename: "/images/ipa.x86_64.initramfs",
+			arch:     "x86_64",
+		},
+		{
 			name:     "invalid filename - different base name",
 			filename: "/images/different-file_x86_64.iso",
 			error:    true,
@@ -244,6 +255,11 @@ func TestImagePattern(t *testing.T) {
 		{
 			name:     "invalid filename - different base name with arch pattern",
 			filename: "different-file_aarch64.initramfs",
+			error:    true,
+		},
+		{
+			name:     "invalid filename - different base name with period separator",
+			filename: "different-file.aarch64.initramfs",
 			error:    true,
 		},
 		{
