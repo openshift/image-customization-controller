@@ -452,11 +452,11 @@ func TestArchitectureFallback(t *testing.T) {
 	}
 
 	// Create host images only (no architecture-specific images)
-	err := os.WriteFile(envInputs.DeployISO, []byte("test iso"), 0644)
+	err := os.WriteFile(envInputs.DeployISO, []byte("test iso"), 0600)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.WriteFile(envInputs.DeployInitrd, []byte("test initramfs"), 0644)
+	err = os.WriteFile(envInputs.DeployInitrd, []byte("test initramfs"), 0600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,6 +474,11 @@ func TestArchitectureFallback(t *testing.T) {
 
 	// Get the host architecture that should trigger fallback
 	hostArch := env.HostArchitecture()
+
+	// Test that host architecture is supported
+	if !handler.HasImagesForArchitecture(hostArch) {
+		t.Errorf("Expected HasImagesForArchitecture to return true for host architecture %s, but got false", hostArch)
+	}
 
 	// Test ISO fallback - should succeed because it falls back to host image
 	isoURL, err := handler.ServeImage("test-key", hostArch, []byte{}, false, false)
@@ -493,4 +498,74 @@ func TestArchitectureFallback(t *testing.T) {
 		t.Errorf("Expected initramfs URL for arch %s, got empty string", hostArch)
 	}
 
+	// Test that non-host architecture is not supported
+	nonHostArch := "some_other_arch"
+	if nonHostArch == hostArch {
+		nonHostArch = "definitely_not_host_arch"
+	}
+
+	if handler.HasImagesForArchitecture(nonHostArch) {
+		t.Errorf("Expected HasImagesForArchitecture to return false for non-host architecture %s, but got true", nonHostArch)
+	}
+}
+
+func TestHasImagesForArchitecture(t *testing.T) {
+	tempDir := t.TempDir()
+
+	envInputs := &env.EnvInputs{
+		DeployISO:      filepath.Join(tempDir, "ipa.iso"),
+		DeployInitrd:   filepath.Join(tempDir, "ipa.initramfs"),
+		ImageSharedDir: tempDir,
+	}
+
+	// Create host images only (no architecture-specific images)
+	err := os.WriteFile(envInputs.DeployISO, []byte("test iso"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(envInputs.DeployInitrd, []byte("test initramfs"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create architecture-specific images for aarch64
+	err = os.WriteFile(filepath.Join(tempDir, "ipa_aarch64.iso"), []byte("aarch64 iso"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(tempDir, "ipa_aarch64.initramfs"), []byte("aarch64 initramfs"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	baseUrl, err := url.Parse("http://base.test:1234")
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+
+	logger := zap.New(zap.UseDevMode(true))
+	handler, err := NewImageHandler(logger, baseUrl, envInputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		arch      string
+		supported bool
+		desc      string
+	}{
+		{"aarch64", true, "aarch64 with both ISO and initramfs files"},
+		{"ppc64le", false, "ppc64le with no files available"},
+		{env.HostArchitecture(), true, "host architecture with fallback to host files"},
+		{"unsupported_arch", false, "unsupported architecture"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			supported := handler.HasImagesForArchitecture(tc.arch)
+			if supported != tc.supported {
+				t.Errorf("HasImagesForArchitecture(%s): expected %t, got %t", tc.arch, tc.supported, supported)
+			}
+		})
+	}
 }

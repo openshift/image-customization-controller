@@ -18,7 +18,6 @@ type rhcosImageProvider struct {
 	ImageHandler   imagehandler.ImageHandler
 	EnvInputs      *env.EnvInputs
 	RegistriesConf []byte
-	Architecture   string
 }
 
 func NewRHCOSImageProvider(imageServer imagehandler.ImageHandler, inputs *env.EnvInputs) imageprovider.ImageProvider {
@@ -27,26 +26,15 @@ func NewRHCOSImageProvider(imageServer imagehandler.ImageHandler, inputs *env.En
 		panic(err)
 	}
 
-	architecture := env.HostArchitecture()
-
 	return &rhcosImageProvider{
 		ImageHandler:   imageServer,
 		EnvInputs:      inputs,
 		RegistriesConf: registries,
-		Architecture:   architecture,
 	}
 }
 
 func (ip *rhcosImageProvider) SupportsArchitecture(arch string) bool {
-	if ip.Architecture == arch {
-		return true
-	}
-
-	if ip.Architecture == "x86_64" && arch == "aarch64" {
-		return true
-	}
-
-	return false
+	return ip.ImageHandler.HasImagesForArchitecture(arch)
 }
 
 func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
