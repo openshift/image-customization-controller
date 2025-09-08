@@ -2,6 +2,7 @@ package env
 
 import (
 	"os"
+	"runtime"
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/pkg/errors"
@@ -43,4 +44,17 @@ func (env *EnvInputs) RegistriesConf() (data []byte, err error) {
 			env.RegistriesConfPath)
 	}
 	return
+}
+
+// HostArchitecture returns the standardized architecture name for the current host.
+// Maps Go's GOARCH values to the architecture names used in image files.
+func HostArchitecture() string {
+	switch runtime.GOARCH {
+	case "amd64":
+		return "x86_64"
+	case "arm64":
+		return "aarch64"
+	default:
+		return runtime.GOARCH
+	}
 }

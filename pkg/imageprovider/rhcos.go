@@ -3,7 +3,6 @@ package imageprovider
 import (
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -28,13 +27,7 @@ func NewRHCOSImageProvider(imageServer imagehandler.ImageHandler, inputs *env.En
 		panic(err)
 	}
 
-	architecture := ""
-	switch runtime.GOARCH {
-	case "amd64":
-		architecture = "x86_64"
-	case "arm64":
-		architecture = "aarch64"
-	}
+	architecture := env.HostArchitecture()
 
 	return &rhcosImageProvider{
 		ImageHandler:   imageServer,

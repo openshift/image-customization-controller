@@ -206,13 +206,31 @@ func (f *imageFileSystem) getBaseImage(arch string, initramfs bool) baseFile {
 	}
 
 	f.log.Info("getBaseImage", "arch", arch, "initramfs", initramfs)
-	if initramfs {
-		file := f.initramfsFiles[arch]
-		return file
-	} else {
-		file := f.isoFiles[arch]
+
+	getFile := func(arch string) baseFile {
+		if initramfs {
+			if file, exists := f.initramfsFiles[arch]; exists {
+				return file
+			}
+		} else {
+			if file, exists := f.isoFiles[arch]; exists {
+				return file
+			}
+		}
+		return nil
+	}
+
+	if file := getFile(arch); file != nil {
 		return file
 	}
+
+	if arch == env.HostArchitecture() {
+		if file := getFile(hostArchitectureKey); file != nil {
+			return file
+		}
+	}
+
+	return nil
 }
 
 func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {

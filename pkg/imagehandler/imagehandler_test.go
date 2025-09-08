@@ -18,6 +18,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -438,4 +440,57 @@ func TestImagePatternAutoDiscovery(t *testing.T) {
 			return
 		}
 	}
+}
+
+func TestArchitectureFallback(t *testing.T) {
+	tempDir := t.TempDir()
+
+	envInputs := &env.EnvInputs{
+		DeployISO:      filepath.Join(tempDir, "ipa.iso"),
+		DeployInitrd:   filepath.Join(tempDir, "ipa.initramfs"),
+		ImageSharedDir: tempDir,
+	}
+
+	// Create host images only (no architecture-specific images)
+	err := os.WriteFile(envInputs.DeployISO, []byte("test iso"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(envInputs.DeployInitrd, []byte("test initramfs"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	baseUrl, err := url.Parse("http://base.test:1234")
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+
+	logger := zap.New(zap.UseDevMode(true))
+	handler, err := NewImageHandler(logger, baseUrl, envInputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the host architecture that should trigger fallback
+	hostArch := env.HostArchitecture()
+
+	// Test ISO fallback - should succeed because it falls back to host image
+	isoURL, err := handler.ServeImage("test-key", hostArch, []byte{}, false, false)
+	if err != nil {
+		t.Errorf("Expected ISO fallback to succeed for arch %s, got error: %v", hostArch, err)
+	}
+	if isoURL == "" {
+		t.Errorf("Expected ISO URL for arch %s, got empty string", hostArch)
+	}
+
+	// Test initramfs fallback - should succeed because it falls back to host image
+	initramfsURL, err := handler.ServeImage("test-key-initramfs", hostArch, []byte{}, true, false)
+	if err != nil {
+		t.Errorf("Expected initramfs fallback to succeed for arch %s, got error: %v", hostArch, err)
+	}
+	if initramfsURL == "" {
+		t.Errorf("Expected initramfs URL for arch %s, got empty string", hostArch)
+	}
+
 }
