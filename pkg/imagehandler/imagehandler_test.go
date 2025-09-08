@@ -298,3 +298,144 @@ func TestImagePattern(t *testing.T) {
 		}
 	}
 }
+
+func TestImagePatternBaseImagesOutsideSharedDir(t *testing.T) {
+	// Test that base deploy images can be located anywhere, not just in ImageSharedDir
+	envInputs := &env.EnvInputs{
+		DeployISO:      "/config/base/ipa.iso",       // Outside shared dir
+		DeployInitrd:   "/config/base/ipa.initramfs", // Outside shared dir
+		ImageSharedDir: "/shared/images",             // Different directory
+	}
+
+	tcs := []struct {
+		name     string
+		filename string
+		arch     string
+		iso      bool
+		error    bool
+	}{
+		{
+			name:     "base iso outside shared dir",
+			filename: "/config/base/ipa.iso",
+			arch:     "host",
+			iso:      true,
+		},
+		{
+			name:     "base initramfs outside shared dir",
+			filename: "/config/base/ipa.initramfs",
+			arch:     "host",
+		},
+		{
+			name:     "arch-specific iso in shared dir",
+			filename: "/shared/images/ipa_aarch64.iso",
+			arch:     "aarch64",
+			iso:      true,
+		},
+		{
+			name:     "arch-specific initramfs in shared dir",
+			filename: "/shared/images/ipa.x86_64.initramfs",
+			arch:     "x86_64",
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Logf("testing %s", tc.name)
+		ii, err := parseDeployImage(envInputs, tc.filename)
+
+		if err != nil && !tc.error {
+			t.Errorf("got error: %v", err)
+			return
+		}
+
+		if err == nil && tc.error {
+			t.Errorf("expected error but got none")
+			return
+		}
+
+		if tc.error {
+			continue
+		}
+
+		if ii.arch != tc.arch {
+			t.Errorf("arch: expected %s but got %s", tc.arch, ii.arch)
+			return
+		}
+
+		if ii.iso != tc.iso {
+			t.Errorf("iso: expected %t but got %t", tc.iso, ii.iso)
+			return
+		}
+	}
+}
+
+func TestImagePatternAutoDiscovery(t *testing.T) {
+	envInputs := &env.EnvInputs{
+		DeployISO:    "/config/base/ipa.iso",
+		DeployInitrd: "/opt/images/ipa.initramfs",
+	}
+
+	tcs := []struct {
+		name     string
+		filename string
+		arch     string
+		iso      bool
+		error    bool
+	}{
+		{
+			name:     "base iso auto-discovery",
+			filename: "/config/base/ipa.iso",
+			arch:     "host",
+			iso:      true,
+		},
+		{
+			name:     "base initramfs auto-discovery",
+			filename: "/opt/images/ipa.initramfs",
+			arch:     "host",
+		},
+		{
+			name:     "arch-specific iso in base iso directory",
+			filename: "/config/base/ipa_aarch64.iso",
+			arch:     "aarch64",
+			iso:      true,
+		},
+		{
+			name:     "arch-specific initramfs in base initramfs directory",
+			filename: "/opt/images/ipa.x86_64.initramfs",
+			arch:     "x86_64",
+		},
+		{
+			name:     "invalid filename in auto-discovered directory",
+			filename: "/config/base/different-file_x86_64.iso",
+			error:    true,
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Logf("testing %s", tc.name)
+		ii, err := parseDeployImage(envInputs, tc.filename)
+
+		if err != nil && !tc.error {
+			t.Errorf("got error: %v", err)
+			return
+		}
+
+		if err == nil && tc.error {
+			t.Errorf("expected error but got none")
+			return
+		}
+
+		if tc.error {
+			continue
+		}
+
+		if ii.arch != tc.arch {
+			t.Errorf("arch: expected %s but got %s", tc.arch, ii.arch)
+			return
+		}
+
+		if ii.iso != tc.iso {
+			t.Errorf("iso: expected %t but got %t", tc.iso, ii.iso)
+			return
+		}
+	}
+}

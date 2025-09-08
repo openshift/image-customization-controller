@@ -122,34 +122,66 @@ type ImageHandler interface {
 	RemoveImage(key string)
 }
 
-func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInputs) (ImageHandler, error) {
-	imageFiles, err := os.ReadDir(envInputs.ImageSharedDir)
+func findOSImageCandidates(logger logr.Logger, envInputs *env.EnvInputs, filePaths []string) []string {
+	var searchDirs []string
 
-	if err != nil {
-		return &imageFileSystem{}, err
+	if envInputs.ImageSharedDir != "" {
+		searchDirs = append(searchDirs, envInputs.ImageSharedDir)
+
+		if filepath.Dir(envInputs.DeployISO) != envInputs.ImageSharedDir {
+			filePaths = append(filePaths, envInputs.DeployISO)
+		}
+		if filepath.Dir(envInputs.DeployInitrd) != envInputs.ImageSharedDir {
+			filePaths = append(filePaths, envInputs.DeployInitrd)
+		}
+	} else {
+		dirSet := make(map[string]bool)
+		dirSet[filepath.Dir(envInputs.DeployISO)] = true
+		dirSet[filepath.Dir(envInputs.DeployInitrd)] = true
+
+		for dir := range dirSet {
+			searchDirs = append(searchDirs, dir)
+		}
 	}
+
+	for _, searchDir := range searchDirs {
+		imageFiles, err := os.ReadDir(searchDir)
+		if err != nil {
+			logger.Info("failed to read directory, continuing", "dir", searchDir, "error", err)
+			continue
+		}
+		logger.Info("reading image files", "dir", searchDir, "len", len(imageFiles))
+		for _, imageFile := range imageFiles {
+			fullPath := path.Join(searchDir, imageFile.Name())
+			filePaths = append(filePaths, fullPath)
+		}
+	}
+
+	return filePaths
+}
+
+func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInputs) (ImageHandler, error) {
+	filePaths := findOSImageCandidates(logger, envInputs, nil)
 
 	isoFiles := map[string]*baseIso{}
 	initramfsFiles := map[string]*baseInitramfs{}
 
-	logger.Info("reading image files", "dir", envInputs.ImageSharedDir, "len", len(imageFiles))
-	for _, imageFile := range imageFiles {
-		filename := imageFile.Name()
+	logger.Info("processing image files", "total", len(filePaths))
+	for _, filePath := range filePaths {
+		logger.Info("load image", "file", filePath)
 
-		logger.Info("load image", "imageFile", imageFile.Name())
-
-		ironicImage, err := parseDeployImage(envInputs, filename)
+		ironicImage, err := parseDeployImage(envInputs, filePath)
 		if err != nil {
-			logger.Info("failed to parse ironic image, continuing")
+			logger.Info("failed to parse ironic image, continuing", "file", filePath)
 			continue
 		}
 
 		logger.Info("image loaded", "filename", ironicImage.filename, "arch", ironicImage.arch, "iso", ironicImage.iso)
 
 		if ironicImage.iso {
-			isoFiles[ironicImage.arch] = newBaseIso(path.Join(envInputs.ImageSharedDir, filename))
+			isoFiles[ironicImage.arch] = newBaseIso(filePath)
 		} else {
-			initramfsFiles[ironicImage.arch] = newBaseInitramfs(path.Join(envInputs.ImageSharedDir, filename))
+			initramfsFiles[ironicImage.arch] = newBaseInitramfs(filePath)
 		}
 	}
 
