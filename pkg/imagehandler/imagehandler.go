@@ -19,7 +19,9 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -32,42 +34,59 @@ const (
 	hostArchitectureKey = "host"
 )
 
-var deployImagePattern = regexp.MustCompile(`ironic-python-agent_(\w+)\.(iso|initramfs)`)
+// matchArchFilename attempts to match a target filename against a base filename.
+// Returns "host" for exact matches, the architecture for pattern matches, or nil if no match.
+func matchArchFilename(baseFilename, targetFilename string) *string {
+	if baseFilename == "" {
+		return nil
+	}
 
-type ironicImage struct {
+	if targetFilename == baseFilename {
+		arch := hostArchitectureKey
+		return &arch
+	}
+
+	base := filepath.Base(baseFilename)
+	ext := filepath.Ext(base)
+	baseName := strings.TrimSuffix(base, ext)
+
+	// Create pattern: basename[_.]ARCH.extension
+	patternStr := fmt.Sprintf(`%s[_.](\w+)%s`, regexp.QuoteMeta(baseName), regexp.QuoteMeta(ext))
+	pattern := regexp.MustCompile(patternStr)
+
+	matches := pattern.FindStringSubmatch(filepath.Base(targetFilename))
+	if len(matches) == 2 {
+		arch := matches[1]
+		return &arch
+	}
+
+	return nil
+}
+
+type osImage struct {
 	filename string
 	arch     string
 	iso      bool
 }
 
-func parseDeployImage(envInputs *env.EnvInputs, filename string) (ironicImage, error) {
-	if filename == envInputs.DeployISO {
-		return ironicImage{
+func loadOSImage(envInputs *env.EnvInputs, filename string) (osImage, error) {
+	if arch := matchArchFilename(envInputs.DeployISO, filename); arch != nil {
+		return osImage{
 			filename: filename,
-			arch:     hostArchitectureKey,
+			arch:     *arch,
 			iso:      true,
 		}, nil
 	}
 
-	if filename == envInputs.DeployInitrd {
-		return ironicImage{
+	if arch := matchArchFilename(envInputs.DeployInitrd, filename); arch != nil {
+		return osImage{
 			filename: filename,
-			arch:     hostArchitectureKey,
+			arch:     *arch,
 			iso:      false,
 		}, nil
 	}
 
-	matches := deployImagePattern.FindStringSubmatch(filename)
-
-	if len(matches) != 3 {
-		return ironicImage{}, fmt.Errorf("failed to parse ironic image name: %s", filename)
-	}
-
-	return ironicImage{
-		filename: filename,
-		arch:     matches[1],
-		iso:      matches[2] == "iso",
-	}, nil
+	return osImage{}, fmt.Errorf("failed to load os image name: %s", filename)
 }
 
 type InvalidBaseImageError struct {
@@ -101,36 +120,69 @@ type ImageHandler interface {
 	FileSystem() http.FileSystem
 	ServeImage(key string, arch string, ignitionContent []byte, initramfs, static bool) (string, error)
 	RemoveImage(key string)
+	HasImagesForArchitecture(arch string) bool
+}
+
+func findOSImageCandidates(logger logr.Logger, envInputs *env.EnvInputs, filePaths []string) []string {
+	var searchDirs []string
+
+	if envInputs.ImageSharedDir != "" {
+		searchDirs = append(searchDirs, envInputs.ImageSharedDir)
+
+		if filepath.Dir(envInputs.DeployISO) != envInputs.ImageSharedDir {
+			filePaths = append(filePaths, envInputs.DeployISO)
+		}
+		if filepath.Dir(envInputs.DeployInitrd) != envInputs.ImageSharedDir {
+			filePaths = append(filePaths, envInputs.DeployInitrd)
+		}
+	} else {
+		dirSet := make(map[string]bool)
+		dirSet[filepath.Dir(envInputs.DeployISO)] = true
+		dirSet[filepath.Dir(envInputs.DeployInitrd)] = true
+
+		for dir := range dirSet {
+			searchDirs = append(searchDirs, dir)
+		}
+	}
+
+	for _, searchDir := range searchDirs {
+		imageFiles, err := os.ReadDir(searchDir)
+		if err != nil {
+			logger.Info("failed to read directory, continuing", "dir", searchDir, "error", err)
+			continue
+		}
+		logger.Info("reading image files", "dir", searchDir, "len", len(imageFiles))
+		for _, imageFile := range imageFiles {
+			fullPath := path.Join(searchDir, imageFile.Name())
+			filePaths = append(filePaths, fullPath)
+		}
+	}
+
+	return filePaths
 }
 
 func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInputs) (ImageHandler, error) {
-	imageFiles, err := os.ReadDir(envInputs.ImageSharedDir)
-
-	if err != nil {
-		return &imageFileSystem{}, err
-	}
+	filePaths := findOSImageCandidates(logger, envInputs, nil)
 
 	isoFiles := map[string]*baseIso{}
 	initramfsFiles := map[string]*baseInitramfs{}
 
-	logger.Info("reading image files", "dir", envInputs.ImageSharedDir, "len", len(imageFiles))
-	for _, imageFile := range imageFiles {
-		filename := imageFile.Name()
+	logger.Info("processing image files", "total", len(filePaths))
+	for _, filePath := range filePaths {
+		logger.Info("load image", "file", filePath)
 
-		logger.Info("load image", "imageFile", imageFile.Name())
-
-		ironicImage, err := parseDeployImage(envInputs, filename)
+		osImage, err := loadOSImage(envInputs, filePath)
 		if err != nil {
-			logger.Info("failed to parse ironic image, continuing")
+			logger.Info("failed to load os image, continuing", "file", filePath)
 			continue
 		}
 
-		logger.Info("image loaded", "filename", ironicImage.filename, "arch", ironicImage.arch, "iso", ironicImage.iso)
+		logger.Info("image loaded", "filename", osImage.filename, "arch", osImage.arch, "iso", osImage.iso)
 
-		if ironicImage.iso {
-			isoFiles[ironicImage.arch] = newBaseIso(path.Join(envInputs.ImageSharedDir, filename))
+		if osImage.iso {
+			isoFiles[osImage.arch] = newBaseIso(filePath)
 		} else {
-			initramfsFiles[ironicImage.arch] = newBaseInitramfs(path.Join(envInputs.ImageSharedDir, filename))
+			initramfsFiles[osImage.arch] = newBaseInitramfs(filePath)
 		}
 	}
 
@@ -155,13 +207,35 @@ func (f *imageFileSystem) getBaseImage(arch string, initramfs bool) baseFile {
 	}
 
 	f.log.Info("getBaseImage", "arch", arch, "initramfs", initramfs)
-	if initramfs {
-		file := f.initramfsFiles[arch]
-		return file
-	} else {
-		file := f.isoFiles[arch]
+
+	getFile := func(arch string) baseFile {
+		if initramfs {
+			if file, exists := f.initramfsFiles[arch]; exists {
+				return file
+			}
+		} else {
+			if file, exists := f.isoFiles[arch]; exists {
+				return file
+			}
+		}
+		return nil
+	}
+
+	if file := getFile(arch); file != nil {
 		return file
 	}
+
+	if arch == env.HostArchitecture() {
+		if file := getFile(hostArchitectureKey); file != nil {
+			return file
+		}
+	}
+
+	return nil
+}
+
+func (f *imageFileSystem) HasImagesForArchitecture(arch string) bool {
+	return f.getBaseImage(arch, false) != nil && f.getBaseImage(arch, true) != nil
 }
 
 func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {
