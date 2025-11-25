@@ -4,7 +4,7 @@ COPY . .
 RUN CGO_ENABLED=0 GO111MODULE=on go build -mod=vendor -a -o bin/image-customization-controller cmd/controller/main.go
 RUN CGO_ENABLED=0 GO111MODULE=on go build -mod=vendor -a -o bin/image-customization-server cmd/static-server/main.go
 
-FROM registry.ci.openshift.org/ocp/4.21:base-rhel9
+FROM registry.ci.openshift.org/ocp/4.21:base-rhel9-minimal-test
 COPY --from=builder /go/src/github.com/openshift/image-customization-controller/bin/image-customization-controller /
 COPY --from=builder /go/src/github.com/openshift/image-customization-controller/bin/image-customization-server /
 
