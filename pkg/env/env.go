@@ -2,6 +2,7 @@ package env
 
 import (
 	"os"
+	"runtime"
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/pkg/errors"
@@ -10,7 +11,7 @@ import (
 type EnvInputs struct {
 	DeployISO                 string `envconfig:"DEPLOY_ISO" required:"true"`
 	DeployInitrd              string `envconfig:"DEPLOY_INITRD" required:"true"`
-	ImageSharedDir            string `envconfig:"IMAGE_SHARED_DIR" default:"/shared/html/images"`
+	ImageSharedDir            string `envconfig:"IMAGE_SHARED_DIR"`
 	IronicBaseURL             string `envconfig:"IRONIC_BASE_URL"`
 	IronicInspectorBaseURL    string `envconfig:"IRONIC_INSPECTOR_BASE_URL"`
 	IronicAgentImage          string `envconfig:"IRONIC_AGENT_IMAGE" required:"true"`
@@ -43,4 +44,17 @@ func (env *EnvInputs) RegistriesConf() (data []byte, err error) {
 			env.RegistriesConfPath)
 	}
 	return
+}
+
+// HostArchitecture returns the standardized architecture name for the current host.
+// Maps Go's GOARCH values to the architecture names used in image files.
+func HostArchitecture() string {
+	switch runtime.GOARCH {
+	case "amd64":
+		return "x86_64"
+	case "arm64":
+		return "aarch64"
+	default:
+		return runtime.GOARCH
+	}
 }
