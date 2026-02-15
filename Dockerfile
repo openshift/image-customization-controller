@@ -13,4 +13,6 @@ COPY --from=builder /go/src/github.com/openshift/image-customization-controller/
 RUN ln -s /image-customization-controller /machine-image-customization-controller
 RUN ln -s /image-customization-server /machine-image-customization-server
 
-RUN dnf install -y nmstate
+RUN dnf install -y nmstate && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf/*
