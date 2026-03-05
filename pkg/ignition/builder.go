@@ -170,6 +170,66 @@ func (b *ignitionBuilder) GenerateConfig() (config ignition_config_types_32.Conf
 		config.Storage.Files = append(config.Storage.Files, registriesFile)
 	}
 
+	// Add console identification message (shown before login)
+	issueMessage := `
+================================================================================
+ This is the Ironic Python Agent (IPA) discovery image
+
+ This image is used for bare metal host discovery and inspection.
+ It is NOT a cluster node.
+================================================================================
+`
+	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
+		"/etc/issue.d/ipa.issue",
+		0644, false,
+		[]byte(issueMessage)))
+
+	// Add MOTD for SSH users with debugging information
+	motdMessage := fmt.Sprintf(`
+================================================================================
+ Welcome to the Ironic Python Agent (IPA) discovery image
+
+ This image is used for bare metal host discovery and inspection.
+ It is NOT a cluster node.
+
+ This system will automatically run hardware inspection and report back to
+ the Ironic service. Do not attempt to use this as a regular system.
+
+ Configuration:
+   Ironic API:       %s
+   IPA Image:        %s`,
+		b.ironicBaseURL,
+		b.ironicAgentImage)
+
+	if b.ironicInspectorBaseURL != "" {
+		motdMessage += fmt.Sprintf(`
+   Inspector API:    %s`, b.ironicInspectorBaseURL)
+	}
+
+	if b.hostname != "" {
+		motdMessage += fmt.Sprintf(`
+   Hostname:         %s`, b.hostname)
+	}
+
+	if len(b.nmStateData) > 0 {
+		motdMessage += `
+   Network Config:   Custom NMState configuration applied`
+	}
+
+	motdMessage += `
+
+ Useful commands:
+   journalctl -u ironic-agent.service    View IPA service logs
+   systemctl status ironic-agent.service Check IPA service status
+   ip addr                                Show network interfaces
+   nmcli connection show                  Show network connections
+================================================================================
+`
+	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
+		"/etc/motd.d/ipa.motd",
+		0644, false,
+		[]byte(motdMessage)))
+
 	report := config.Storage.Validate(vpath.ContextPath{})
 	if report.IsFatal() {
 		return config, errors.New(report.String())

@@ -20,7 +20,7 @@ func TestGenerateStructure(t *testing.T) {
 
 	assert.Equal(t, "3.2.0", ignition.Ignition.Version)
 	assert.Len(t, ignition.Systemd.Units, 1)
-	assert.Len(t, ignition.Storage.Files, 2)
+	assert.Len(t, ignition.Storage.Files, 4)
 	assert.Len(t, ignition.Passwd.Users, 0)
 
 	// Sanity-check only
@@ -28,6 +28,8 @@ func TestGenerateStructure(t *testing.T) {
 	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "ironic.example.com%3A6385")
 	assert.NotContains(t, *ignition.Storage.Files[0].Contents.Source, "ironic.example.com%3A5050")
 	assert.Equal(t, ignition.Storage.Files[1].Path, "/etc/NetworkManager/conf.d/clientid.conf")
+	assert.Equal(t, ignition.Storage.Files[2].Path, "/etc/issue.d/ipa.issue")
+	assert.Equal(t, ignition.Storage.Files[3].Path, "/etc/motd.d/ipa.motd")
 }
 
 func TestGenerateWithMoreFields(t *testing.T) {
@@ -45,7 +47,7 @@ func TestGenerateWithMoreFields(t *testing.T) {
 
 	assert.Equal(t, "3.2.0", ignition.Ignition.Version)
 	assert.Len(t, ignition.Systemd.Units, 1)
-	assert.Len(t, ignition.Storage.Files, 6)
+	assert.Len(t, ignition.Storage.Files, 8)
 	assert.Len(t, ignition.Passwd.Users, 1)
 
 	// Sanity-check only
@@ -57,6 +59,8 @@ func TestGenerateWithMoreFields(t *testing.T) {
 	assert.Equal(t, ignition.Storage.Files[3].Path, "/etc/NetworkManager/conf.d/clientid.conf")
 	assert.Equal(t, ignition.Storage.Files[4].Path, "/etc/NetworkManager/dispatcher.d/01-hostname")
 	assert.Equal(t, ignition.Storage.Files[5].Path, "/etc/containers/registries.conf")
+	assert.Equal(t, ignition.Storage.Files[6].Path, "/etc/issue.d/ipa.issue")
+	assert.Equal(t, ignition.Storage.Files[7].Path, "/etc/motd.d/ipa.motd")
 	assert.Equal(t, ignition.Passwd.Users[0].Name, "core")
 	assert.Len(t, ignition.Passwd.Users[0].SSHAuthorizedKeys, 1)
 }
@@ -88,4 +92,72 @@ func TestGenerateRegistries(t *testing.T) {
 	if !strings.Contains(string(ignition), registriesData) {
 		t.Fatalf("Registries data not found in ignition:\n%s", string(ignition))
 	}
+}
+
+func TestGenerateIPAIdentificationFiles(t *testing.T) {
+	builder, err := New(nil, nil,
+		"http://ironic.example.com", "",
+		"quay.io/openshift-release-dev/ironic-ipa-image",
+		"", "", "", "", "", "", "", "", []string{}, "")
+	assert.NoError(t, err)
+
+	ignition, err := builder.GenerateConfig()
+	assert.NoError(t, err)
+
+	// Find the issue file
+	var issueFile *string
+	var motdFile *string
+	for _, file := range ignition.Storage.Files {
+		if file.Path == "/etc/issue.d/ipa.issue" {
+			issueFile = file.Contents.Source
+		}
+		if file.Path == "/etc/motd.d/ipa.motd" {
+			motdFile = file.Contents.Source
+		}
+	}
+
+	// Verify issue file exists and contains IPA identification
+	assert.NotNil(t, issueFile, "Issue file should be present")
+	assert.Contains(t, *issueFile, "Ironic%20Python%20Agent")
+	assert.Contains(t, *issueFile, "discovery%20image")
+
+	// Verify MOTD file exists and contains IPA identification
+	assert.NotNil(t, motdFile, "MOTD file should be present")
+	assert.Contains(t, *motdFile, "Ironic%20Python%20Agent")
+	assert.Contains(t, *motdFile, "discovery%20image")
+	// Verify debugging info is included
+	assert.Contains(t, *motdFile, "ironic.example.com")
+	assert.Contains(t, *motdFile, "quay.io")
+	assert.Contains(t, *motdFile, "journalctl")
+}
+
+func TestGenerateIPAIdentificationWithDebuggingInfo(t *testing.T) {
+	// Test without NMState data to avoid requiring nmstatectl in CI
+	builder, err := New(nil, nil,
+		"http://ironic.example.com", "http://inspector.example.com",
+		"quay.io/openshift-release-dev/ironic-ipa-image:v4.17",
+		"", "", "", "", "", "", "my-hostname", "", []string{}, "")
+	assert.NoError(t, err)
+
+	ignition, err := builder.GenerateConfig()
+	assert.NoError(t, err)
+
+	// Find the MOTD file
+	var motdFile *string
+	for _, file := range ignition.Storage.Files {
+		if file.Path == "/etc/motd.d/ipa.motd" {
+			motdFile = file.Contents.Source
+		}
+	}
+
+	// Verify MOTD file contains debugging information
+	assert.NotNil(t, motdFile, "MOTD file should be present")
+	assert.Contains(t, *motdFile, "ironic.example.com", "Should contain Ironic URL")
+	assert.Contains(t, *motdFile, "inspector.example.com", "Should contain Inspector URL")
+	assert.Contains(t, *motdFile, "my-hostname", "Should contain hostname")
+	assert.Contains(t, *motdFile, "quay.io%2Fopenshift-release-dev%2Fironic-ipa-image", "Should contain IPA image")
+	assert.Contains(t, *motdFile, "Useful%20commands", "Should contain useful commands section")
+	assert.Contains(t, *motdFile, "journalctl", "Should contain journalctl command")
+	// Without NMState data, should not mention custom network config
+	assert.NotContains(t, *motdFile, "Custom%20NMState", "Should not mention NMState when not configured")
 }
