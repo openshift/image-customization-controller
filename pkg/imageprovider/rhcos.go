@@ -47,7 +47,12 @@ func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 }
 
 func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData, hostname string) ([]byte, error) {
-	nmstateData := networkData["nmstate"]
+	nmstateData, found := networkData["nmstate"]
+	if len(networkData) > 0 && !found {
+		return nil, imageprovider.BuildInvalidError(
+			fmt.Errorf("network data Secret provided but missing required 'nmstate' key"),
+		)
+	}
 
 	additionalNTPServers := []string{}
 	if ip.EnvInputs.AdditionalNTPServers != "" {
