@@ -11,6 +11,7 @@ import (
 type EnvInputs struct {
 	DeployISO                 string `envconfig:"DEPLOY_ISO" required:"true"`
 	DeployInitrd              string `envconfig:"DEPLOY_INITRD" required:"true"`
+	DeployKernel              string `envconfig:"DEPLOY_KERNEL"`
 	ImageSharedDir            string `envconfig:"IMAGE_SHARED_DIR"`
 	IronicBaseURL             string `envconfig:"IRONIC_BASE_URL"`
 	IronicInspectorBaseURL    string `envconfig:"IRONIC_INSPECTOR_BASE_URL"`
@@ -25,6 +26,7 @@ type EnvInputs struct {
 	NoProxy                   string `envconfig:"NO_PROXY"`
 	AdditionalNTPServers      string `envconfig:"ADDITIONAL_NTP_SERVERS"`
 	CaBundle                  string `envconfig:"CA_BUNDLE"`
+	IronicRootfsURL           string `envconfig:"IRONIC_ROOTFS_URL"`
 }
 
 func New() (*EnvInputs, error) {

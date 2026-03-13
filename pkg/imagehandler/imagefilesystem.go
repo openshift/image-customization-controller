@@ -57,7 +57,12 @@ func (f *imageFileSystem) Open(name string) (http.File, error) {
 		return nil, fs.ErrNotExist
 	}
 
-	baseImage := f.getBaseImage(im.arch, im.initramfs)
+	var baseImage baseFile
+	if im.kernel {
+		baseImage = f.getKernel(im.arch)
+	} else {
+		baseImage = f.getBaseImage(im.arch, im.initramfs)
+	}
 
 	if err := im.Init(baseImage); err != nil {
 		f.log.Error(err, "failed to create image stream")

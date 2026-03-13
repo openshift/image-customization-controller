@@ -30,6 +30,7 @@ type imageFile struct {
 	ignitionContent []byte
 	imageReader     isoeditor.ImageReader
 	initramfs       bool
+	kernel          bool
 }
 
 // file interface implementation

@@ -63,10 +63,18 @@ func matchArchFilename(baseFilename, targetFilename string) *string {
 	return nil
 }
 
+type imageKind int
+
+const (
+	imageKindISO imageKind = iota
+	imageKindInitramfs
+	imageKindKernel
+)
+
 type osImage struct {
 	filename string
 	arch     string
-	iso      bool
+	kind     imageKind
 }
 
 func loadOSImage(envInputs *env.EnvInputs, filename string) (osImage, error) {
@@ -74,7 +82,7 @@ func loadOSImage(envInputs *env.EnvInputs, filename string) (osImage, error) {
 		return osImage{
 			filename: filename,
 			arch:     *arch,
-			iso:      true,
+			kind:     imageKindISO,
 		}, nil
 	}
 
@@ -82,7 +90,15 @@ func loadOSImage(envInputs *env.EnvInputs, filename string) (osImage, error) {
 		return osImage{
 			filename: filename,
 			arch:     *arch,
-			iso:      false,
+			kind:     imageKindInitramfs,
+		}, nil
+	}
+
+	if arch := matchArchFilename(envInputs.DeployKernel, filename); arch != nil {
+		return osImage{
+			filename: filename,
+			arch:     *arch,
+			kind:     imageKindKernel,
 		}, nil
 	}
 
@@ -106,6 +122,7 @@ func (ie InvalidBaseImageError) Unwrap() error {
 type imageFileSystem struct {
 	isoFiles       map[string]*baseIso
 	initramfsFiles map[string]*baseInitramfs
+	kernelFiles    map[string]*baseKernel
 	baseURL        *url.URL
 	keys           map[string]string
 	images         map[string]*imageFile
@@ -119,6 +136,7 @@ var _ http.FileSystem = &imageFileSystem{}
 type ImageHandler interface {
 	FileSystem() http.FileSystem
 	ServeImage(key string, arch string, ignitionContent []byte, initramfs, static bool) (string, error)
+	ServeKernel(arch string) (string, error)
 	RemoveImage(key string)
 	HasImagesForArchitecture(arch string) bool
 }
@@ -135,10 +153,16 @@ func findOSImageCandidates(logger logr.Logger, envInputs *env.EnvInputs, filePat
 		if filepath.Dir(envInputs.DeployInitrd) != envInputs.ImageSharedDir {
 			filePaths = append(filePaths, envInputs.DeployInitrd)
 		}
+		if envInputs.DeployKernel != "" && filepath.Dir(envInputs.DeployKernel) != envInputs.ImageSharedDir {
+			filePaths = append(filePaths, envInputs.DeployKernel)
+		}
 	} else {
 		dirSet := make(map[string]bool)
 		dirSet[filepath.Dir(envInputs.DeployISO)] = true
 		dirSet[filepath.Dir(envInputs.DeployInitrd)] = true
+		if envInputs.DeployKernel != "" {
+			dirSet[filepath.Dir(envInputs.DeployKernel)] = true
+		}
 
 		for dir := range dirSet {
 			searchDirs = append(searchDirs, dir)
@@ -166,6 +190,7 @@ func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInp
 
 	isoFiles := map[string]*baseIso{}
 	initramfsFiles := map[string]*baseInitramfs{}
+	kernelFiles := map[string]*baseKernel{}
 
 	logger.Info("processing image files", "total", len(filePaths))
 	for _, filePath := range filePaths {
@@ -177,12 +202,15 @@ func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInp
 			continue
 		}
 
-		logger.Info("image loaded", "filename", osImage.filename, "arch", osImage.arch, "iso", osImage.iso)
+		logger.Info("image loaded", "filename", osImage.filename, "arch", osImage.arch, "kind", osImage.kind)
 
-		if osImage.iso {
+		switch osImage.kind {
+		case imageKindISO:
 			isoFiles[osImage.arch] = newBaseIso(filePath)
-		} else {
+		case imageKindInitramfs:
 			initramfsFiles[osImage.arch] = newBaseInitramfs(filePath)
+		case imageKindKernel:
+			kernelFiles[osImage.arch] = newBaseKernel(filePath)
 		}
 	}
 
@@ -190,6 +218,7 @@ func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInp
 		log:            logger,
 		isoFiles:       isoFiles,
 		initramfsFiles: initramfsFiles,
+		kernelFiles:    kernelFiles,
 		baseURL:        baseURL,
 		keys:           map[string]string{},
 		images:         map[string]*imageFile{},
@@ -232,6 +261,74 @@ func (f *imageFileSystem) getBaseImage(arch string, initramfs bool) baseFile {
 	}
 
 	return nil
+}
+
+func (f *imageFileSystem) getKernel(arch string) baseFile {
+	if arch == "" {
+		arch = hostArchitectureKey
+	}
+
+	f.log.Info("getKernel", "arch", arch)
+
+	getFile := func(arch string) baseFile {
+		if file, exists := f.kernelFiles[arch]; exists {
+			return file
+		}
+		return nil
+	}
+
+	if file := getFile(arch); file != nil {
+		return file
+	}
+
+	if arch == env.HostArchitecture() {
+		if file := getFile(hostArchitectureKey); file != nil {
+			return file
+		}
+	}
+
+	return nil
+}
+
+func (f *imageFileSystem) ServeKernel(arch string) (string, error) {
+	kernel := f.getKernel(arch)
+	if kernel == nil {
+		return "", nil
+	}
+
+	size, err := kernel.Size()
+	if err != nil {
+		return "", err
+	}
+
+	key := fmt.Sprintf("kernel-%s", arch)
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if img, exists := f.images[key]; exists {
+		p, err := url.Parse(fmt.Sprintf("/%s", img.name))
+		if err != nil {
+			return "", err
+		}
+		return f.baseURL.ResolveReference(p).String(), nil
+	}
+
+	name := key
+	p, err := url.Parse(fmt.Sprintf("/%s", name))
+	if err != nil {
+		return "", err
+	}
+
+	f.keys[name] = key
+	f.images[key] = &imageFile{
+		name:   name,
+		arch:   arch,
+		size:   size,
+		kernel: true,
+	}
+
+	return f.baseURL.ResolveReference(p).String(), nil
 }
 
 func (f *imageFileSystem) HasImagesForArchitecture(arch string) bool {

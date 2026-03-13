@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/openshift/assisted-image-service/pkg/isoeditor"
+	"github.com/openshift/assisted-image-service/pkg/overlay"
 )
 
 type baseFile interface {
@@ -69,3 +70,20 @@ func newBaseInitramfs(filename string) *baseInitramfs {
 func (birfs *baseInitramfs) InsertIgnition(ignition *isoeditor.IgnitionContent) (isoeditor.ImageReader, error) {
 	return isoeditor.NewInitRamFSStreamReader(birfs.filename, ignition)
 }
+
+type baseKernel struct {
+	baseFileData
+}
+
+func newBaseKernel(filename string) *baseKernel {
+	return &baseKernel{baseFileData{filename: filename}}
+}
+
+// InsertIgnition for kernel files returns the file as-is with no modification.
+// *os.File satisfies overlay.OverlayReader (io.ReadSeekCloser).
+func (bk *baseKernel) InsertIgnition(_ *isoeditor.IgnitionContent) (isoeditor.ImageReader, error) {
+	return os.Open(bk.filename)
+}
+
+// Ensure *os.File satisfies the ImageReader (overlay.OverlayReader) interface.
+var _ overlay.OverlayReader = (*os.File)(nil)
