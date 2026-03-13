@@ -202,52 +202,56 @@ func TestImagePattern(t *testing.T) {
 		name     string
 		filename string
 		arch     string
-		iso      bool
+		kind     imageKind
 		error    bool
 	}{
 		{
 			name:     "host iso - exact path match",
 			filename: "/config/ipa.iso",
 			arch:     "host",
-			iso:      true,
+			kind:     imageKindISO,
 		},
 		{
 			name:     "host initramfs - exact path match",
 			filename: "/config/ipa.initramfs",
 			arch:     "host",
+			kind:     imageKindInitramfs,
 		},
 		{
 			name:     "aarch64 iso - same directory as config",
 			filename: "/config/ipa_aarch64.iso",
 			arch:     "aarch64",
-			iso:      true,
+			kind:     imageKindISO,
 		},
 		{
 			name:     "aarch64 initramfs - different directory from config",
 			filename: "/images/ipa_aarch64.initramfs",
 			arch:     "aarch64",
+			kind:     imageKindInitramfs,
 		},
 		{
 			name:     "x86_64 iso - different directory from config",
 			filename: "/images/ipa_x86_64.iso",
 			arch:     "x86_64",
-			iso:      true,
+			kind:     imageKindISO,
 		},
 		{
 			name:     "x86_64 initramfs - relative path",
 			filename: "ipa_x86_64.initramfs",
 			arch:     "x86_64",
+			kind:     imageKindInitramfs,
 		},
 		{
 			name:     "aarch64 iso - period separator",
 			filename: "ipa.aarch64.iso",
 			arch:     "aarch64",
-			iso:      true,
+			kind:     imageKindISO,
 		},
 		{
 			name:     "x86_64 initramfs - period separator",
 			filename: "/images/ipa.x86_64.initramfs",
 			arch:     "x86_64",
+			kind:     imageKindInitramfs,
 		},
 		{
 			name:     "invalid filename - different base name",
@@ -294,10 +298,90 @@ func TestImagePattern(t *testing.T) {
 			return
 		}
 
-		if ii.iso != tc.iso {
-			t.Errorf("iso: expected %t but got %t", tc.iso, ii.iso)
+		if ii.kind != tc.kind {
+			t.Errorf("kind: expected %d but got %d", tc.kind, ii.kind)
 			return
 		}
+	}
+}
+
+func TestImagePatternWithKernel(t *testing.T) {
+	envInputs := &env.EnvInputs{
+		DeployISO:    "/config/ipa.iso",
+		DeployInitrd: "/config/ipa.initramfs",
+		DeployKernel: "/config/ipa.kernel",
+	}
+
+	tcs := []struct {
+		name     string
+		filename string
+		arch     string
+		kind     imageKind
+		error    bool
+	}{
+		{
+			name:     "host kernel - exact path match",
+			filename: "/config/ipa.kernel",
+			arch:     "host",
+			kind:     imageKindKernel,
+		},
+		{
+			name:     "aarch64 kernel - underscore separator",
+			filename: "/config/ipa_aarch64.kernel",
+			arch:     "aarch64",
+			kind:     imageKindKernel,
+		},
+		{
+			name:     "x86_64 kernel - period separator",
+			filename: "/images/ipa.x86_64.kernel",
+			arch:     "x86_64",
+			kind:     imageKindKernel,
+		},
+		{
+			name:     "host iso still works",
+			filename: "/config/ipa.iso",
+			arch:     "host",
+			kind:     imageKindISO,
+		},
+		{
+			name:     "host initramfs still works",
+			filename: "/config/ipa.initramfs",
+			arch:     "host",
+			kind:     imageKindInitramfs,
+		},
+		{
+			name:     "invalid kernel - different base name",
+			filename: "/images/different-file_x86_64.kernel",
+			error:    true,
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			ii, err := loadOSImage(envInputs, tc.filename)
+
+			if err != nil && !tc.error {
+				t.Errorf("got error: %v", err)
+				return
+			}
+
+			if err == nil && tc.error {
+				t.Errorf("expected error but got none")
+				return
+			}
+
+			if tc.error {
+				return
+			}
+
+			if ii.arch != tc.arch {
+				t.Errorf("arch: expected %s but got %s", tc.arch, ii.arch)
+			}
+
+			if ii.kind != tc.kind {
+				t.Errorf("kind: expected %d but got %d", tc.kind, ii.kind)
+			}
+		})
 	}
 }
 
@@ -313,30 +397,32 @@ func TestImagePatternBaseImagesOutsideSharedDir(t *testing.T) {
 		name     string
 		filename string
 		arch     string
-		iso      bool
+		kind     imageKind
 		error    bool
 	}{
 		{
 			name:     "base iso outside shared dir",
 			filename: "/config/base/ipa.iso",
 			arch:     "host",
-			iso:      true,
+			kind:     imageKindISO,
 		},
 		{
 			name:     "base initramfs outside shared dir",
 			filename: "/config/base/ipa.initramfs",
 			arch:     "host",
+			kind:     imageKindInitramfs,
 		},
 		{
 			name:     "arch-specific iso in shared dir",
 			filename: "/shared/images/ipa_aarch64.iso",
 			arch:     "aarch64",
-			iso:      true,
+			kind:     imageKindISO,
 		},
 		{
 			name:     "arch-specific initramfs in shared dir",
 			filename: "/shared/images/ipa.x86_64.initramfs",
 			arch:     "x86_64",
+			kind:     imageKindInitramfs,
 		},
 	}
 
@@ -363,8 +449,8 @@ func TestImagePatternBaseImagesOutsideSharedDir(t *testing.T) {
 			return
 		}
 
-		if ii.iso != tc.iso {
-			t.Errorf("iso: expected %t but got %t", tc.iso, ii.iso)
+		if ii.kind != tc.kind {
+			t.Errorf("kind: expected %d but got %d", tc.kind, ii.kind)
 			return
 		}
 	}
@@ -380,30 +466,32 @@ func TestImagePatternAutoDiscovery(t *testing.T) {
 		name     string
 		filename string
 		arch     string
-		iso      bool
+		kind     imageKind
 		error    bool
 	}{
 		{
 			name:     "base iso auto-discovery",
 			filename: "/config/base/ipa.iso",
 			arch:     "host",
-			iso:      true,
+			kind:     imageKindISO,
 		},
 		{
 			name:     "base initramfs auto-discovery",
 			filename: "/opt/images/ipa.initramfs",
 			arch:     "host",
+			kind:     imageKindInitramfs,
 		},
 		{
 			name:     "arch-specific iso in base iso directory",
 			filename: "/config/base/ipa_aarch64.iso",
 			arch:     "aarch64",
-			iso:      true,
+			kind:     imageKindISO,
 		},
 		{
 			name:     "arch-specific initramfs in base initramfs directory",
 			filename: "/opt/images/ipa.x86_64.initramfs",
 			arch:     "x86_64",
+			kind:     imageKindInitramfs,
 		},
 		{
 			name:     "invalid filename in auto-discovered directory",
@@ -435,8 +523,8 @@ func TestImagePatternAutoDiscovery(t *testing.T) {
 			return
 		}
 
-		if ii.iso != tc.iso {
-			t.Errorf("iso: expected %t but got %t", tc.iso, ii.iso)
+		if ii.kind != tc.kind {
+			t.Errorf("kind: expected %d but got %d", tc.kind, ii.kind)
 			return
 		}
 	}
@@ -567,5 +655,162 @@ func TestHasImagesForArchitecture(t *testing.T) {
 				t.Errorf("HasImagesForArchitecture(%s): expected %t, got %t", tc.arch, tc.supported, supported)
 			}
 		})
+	}
+}
+
+func TestHasImagesForArchitectureWithKernel(t *testing.T) {
+	// Verify that having a kernel file does NOT affect HasImagesForArchitecture
+	tempDir := t.TempDir()
+
+	envInputs := &env.EnvInputs{
+		DeployISO:      filepath.Join(tempDir, "ipa.iso"),
+		DeployInitrd:   filepath.Join(tempDir, "ipa.initramfs"),
+		DeployKernel:   filepath.Join(tempDir, "ipa.kernel"),
+		ImageSharedDir: tempDir,
+	}
+
+	// Create host images
+	err := os.WriteFile(envInputs.DeployISO, []byte("test iso"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(envInputs.DeployInitrd, []byte("test initramfs"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(envInputs.DeployKernel, []byte("test kernel"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create aarch64 kernel only (no ISO/initramfs for aarch64)
+	err = os.WriteFile(filepath.Join(tempDir, "ipa_aarch64.kernel"), []byte("aarch64 kernel"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	baseUrl, err := url.Parse("http://base.test:1234")
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+
+	logger := zap.New(zap.UseDevMode(true))
+	handler, err := NewImageHandler(logger, baseUrl, envInputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// aarch64 has only kernel, not ISO+initramfs, so should NOT be supported
+	if handler.HasImagesForArchitecture("aarch64") {
+		t.Error("HasImagesForArchitecture should return false for aarch64 with only kernel file")
+	}
+
+	// host arch should still be supported (has ISO + initramfs)
+	if !handler.HasImagesForArchitecture(env.HostArchitecture()) {
+		t.Error("HasImagesForArchitecture should return true for host architecture")
+	}
+}
+
+func TestServeKernel(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create kernel files
+	kernelPath := filepath.Join(tempDir, "ipa.kernel")
+	err := os.WriteFile(kernelPath, []byte("test kernel content"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	aarch64KernelPath := filepath.Join(tempDir, "ipa_aarch64.kernel")
+	err = os.WriteFile(aarch64KernelPath, []byte("aarch64 kernel content"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	baseUrl, err := url.Parse("http://base.test:1234")
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+
+	logger := zap.New(zap.UseDevMode(true))
+
+	ifs := &imageFileSystem{
+		log:            logger,
+		isoFiles:       map[string]*baseIso{},
+		initramfsFiles: map[string]*baseInitramfs{},
+		kernelFiles: map[string]*baseKernel{
+			"host":    newBaseKernel(kernelPath),
+			"aarch64": newBaseKernel(aarch64KernelPath),
+		},
+		baseURL: baseUrl,
+		keys:    map[string]string{},
+		images:  map[string]*imageFile{},
+		mu:      &sync.Mutex{},
+	}
+
+	// Test serving kernel for aarch64
+	kernelURL, err := ifs.ServeKernel("aarch64")
+	if err != nil {
+		t.Fatalf("unexpected error serving aarch64 kernel: %v", err)
+	}
+	expected := "http://base.test:1234/kernel-aarch64"
+	if kernelURL != expected {
+		t.Errorf("unexpected kernel URL: got %s, want %s", kernelURL, expected)
+	}
+
+	// Test serving kernel for host architecture (falls back to "host" key)
+	hostKernelURL, err := ifs.ServeKernel(env.HostArchitecture())
+	if err != nil {
+		t.Fatalf("unexpected error serving host kernel: %v", err)
+	}
+	if hostKernelURL == "" {
+		t.Error("expected non-empty kernel URL for host architecture")
+	}
+
+	// Test serving kernel for unsupported architecture returns empty string
+	noKernelURL, err := ifs.ServeKernel("ppc64le")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if noKernelURL != "" {
+		t.Errorf("expected empty kernel URL for unsupported arch, got %s", noKernelURL)
+	}
+
+	// Test idempotency - serving same arch again returns same URL
+	kernelURLAgain, err := ifs.ServeKernel("aarch64")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if kernelURLAgain != kernelURL {
+		t.Errorf("inconsistent kernel URLs: %s vs %s", kernelURL, kernelURLAgain)
+	}
+}
+
+func TestServeKernelNoKernelConfigured(t *testing.T) {
+	baseUrl, err := url.Parse("http://base.test:1234")
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+
+	logger := zap.New(zap.UseDevMode(true))
+
+	ifs := &imageFileSystem{
+		log:            logger,
+		isoFiles:       map[string]*baseIso{},
+		initramfsFiles: map[string]*baseInitramfs{},
+		kernelFiles:    map[string]*baseKernel{},
+		baseURL:        baseUrl,
+		keys:           map[string]string{},
+		images:         map[string]*imageFile{},
+		mu:             &sync.Mutex{},
+	}
+
+	// With no kernel files, ServeKernel should return empty string
+	kernelURL, err := ifs.ServeKernel("x86_64")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if kernelURL != "" {
+		t.Errorf("expected empty kernel URL when no kernels configured, got %s", kernelURL)
 	}
 }
