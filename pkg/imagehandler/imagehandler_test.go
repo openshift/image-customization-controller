@@ -14,6 +14,7 @@ limitations under the License.
 package imagehandler
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -662,6 +663,13 @@ func TestHasImagesForArchitectureWithKernel(t *testing.T) {
 	// Verify that having a kernel file does NOT affect HasImagesForArchitecture
 	tempDir := t.TempDir()
 
+	// Pick an architecture different from the host for the kernel-only test
+	// to avoid fallback logic matching host images
+	kernelOnlyArch := "x86_64"
+	if env.HostArchitecture() == "x86_64" {
+		kernelOnlyArch = "aarch64"
+	}
+
 	envInputs := &env.EnvInputs{
 		DeployISO:      filepath.Join(tempDir, "ipa.iso"),
 		DeployInitrd:   filepath.Join(tempDir, "ipa.initramfs"),
@@ -683,8 +691,9 @@ func TestHasImagesForArchitectureWithKernel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create aarch64 kernel only (no ISO/initramfs for aarch64)
-	err = os.WriteFile(filepath.Join(tempDir, "ipa_aarch64.kernel"), []byte("aarch64 kernel"), 0600)
+	// Create kernel-only file for non-host architecture (no ISO/initramfs)
+	kernelOnlyFile := filepath.Join(tempDir, fmt.Sprintf("ipa_%s.kernel", kernelOnlyArch))
+	err = os.WriteFile(kernelOnlyFile, []byte("kernel only"), 0600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -700,9 +709,9 @@ func TestHasImagesForArchitectureWithKernel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// aarch64 has only kernel, not ISO+initramfs, so should NOT be supported
-	if handler.HasImagesForArchitecture("aarch64") {
-		t.Error("HasImagesForArchitecture should return false for aarch64 with only kernel file")
+	// kernelOnlyArch has only kernel, not ISO+initramfs, so should NOT be supported
+	if handler.HasImagesForArchitecture(kernelOnlyArch) {
+		t.Errorf("HasImagesForArchitecture should return false for %s with only kernel file", kernelOnlyArch)
 	}
 
 	// host arch should still be supported (has ISO + initramfs)

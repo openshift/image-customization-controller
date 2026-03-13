@@ -144,26 +144,23 @@ type ImageHandler interface {
 func findOSImageCandidates(logger logr.Logger, envInputs *env.EnvInputs, filePaths []string) []string {
 	var searchDirs []string
 
+	deployPaths := []string{envInputs.DeployISO, envInputs.DeployInitrd}
+	if envInputs.DeployKernel != "" {
+		deployPaths = append(deployPaths, envInputs.DeployKernel)
+	}
+
 	if envInputs.ImageSharedDir != "" {
 		searchDirs = append(searchDirs, envInputs.ImageSharedDir)
-
-		if filepath.Dir(envInputs.DeployISO) != envInputs.ImageSharedDir {
-			filePaths = append(filePaths, envInputs.DeployISO)
-		}
-		if filepath.Dir(envInputs.DeployInitrd) != envInputs.ImageSharedDir {
-			filePaths = append(filePaths, envInputs.DeployInitrd)
-		}
-		if envInputs.DeployKernel != "" && filepath.Dir(envInputs.DeployKernel) != envInputs.ImageSharedDir {
-			filePaths = append(filePaths, envInputs.DeployKernel)
+		for _, p := range deployPaths {
+			if filepath.Dir(p) != envInputs.ImageSharedDir {
+				filePaths = append(filePaths, p)
+			}
 		}
 	} else {
 		dirSet := make(map[string]bool)
-		dirSet[filepath.Dir(envInputs.DeployISO)] = true
-		dirSet[filepath.Dir(envInputs.DeployInitrd)] = true
-		if envInputs.DeployKernel != "" {
-			dirSet[filepath.Dir(envInputs.DeployKernel)] = true
+		for _, p := range deployPaths {
+			dirSet[filepath.Dir(p)] = true
 		}
-
 		for dir := range dirSet {
 			searchDirs = append(searchDirs, dir)
 		}

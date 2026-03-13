@@ -3,7 +3,8 @@ package imageprovider
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
+	"net/url"
+	"path"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -117,6 +118,9 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 		if err != nil {
 			return generated, err
 		}
+		if kernelURL == "" && data.Architecture != env.HostArchitecture() {
+			return generated, fmt.Errorf("no kernel file available for architecture %s", data.Architecture)
+		}
 		generated.KernelURL = kernelURL
 
 		// Override the rootfs URL for non-host architectures. Ironic's global
@@ -134,10 +138,17 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 // archSpecificURL transforms a base URL like
 // "http://host:port/images/ironic-python-agent.rootfs" into an arch-specific
 // URL like "http://host:port/images/ironic-python-agent_aarch64.rootfs".
+// Preserves query parameters and URL fragments.
 func archSpecificURL(baseURL, arch string) string {
-	ext := filepath.Ext(baseURL)
-	base := strings.TrimSuffix(baseURL, ext)
-	return fmt.Sprintf("%s_%s%s", base, arch, ext)
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		// Fallback for unparseable URLs - shouldn't happen in practice
+		return baseURL
+	}
+	ext := path.Ext(u.Path)
+	base := strings.TrimSuffix(u.Path, ext)
+	u.Path = fmt.Sprintf("%s_%s%s", base, arch, ext)
+	return u.String()
 }
 
 func (ip *rhcosImageProvider) DiscardImage(data imageprovider.ImageData) error {
