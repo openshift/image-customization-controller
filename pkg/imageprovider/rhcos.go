@@ -3,6 +3,8 @@ package imageprovider
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"path"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -111,8 +113,47 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 	if errors.As(err, &imagehandler.InvalidBaseImageError{}) {
 		return generated, imageprovider.BuildInvalidError(err)
 	}
+	if err != nil {
+		return generated, err
+	}
 	generated.ImageURL = url
-	return generated, err
+
+	if data.Format == metal3.ImageFormatInitRD {
+		kernelURL, err := ip.ImageHandler.ServeKernel(data.Architecture)
+		if err != nil {
+			return generated, err
+		}
+		if kernelURL == "" && data.Architecture != env.HostArchitecture() {
+			return generated, fmt.Errorf("no kernel file available for architecture %s", data.Architecture)
+		}
+		generated.KernelURL = kernelURL
+
+		// Override the rootfs URL for non-host architectures. Ironic's global
+		// kernel_append_params contains a rootfs URL for the host architecture.
+		// For other architectures we need to point to the arch-specific rootfs.
+		if ip.EnvInputs.IronicRootfsURL != "" && data.Architecture != env.HostArchitecture() {
+			archRootfsURL := archSpecificURL(ip.EnvInputs.IronicRootfsURL, data.Architecture)
+			generated.ExtraKernelParams = "coreos.live.rootfs_url=" + archRootfsURL
+		}
+	}
+
+	return generated, nil
+}
+
+// archSpecificURL transforms a base URL like
+// "http://host:port/images/ironic-python-agent.rootfs" into an arch-specific
+// URL like "http://host:port/images/ironic-python-agent_aarch64.rootfs".
+// Preserves query parameters and URL fragments.
+func archSpecificURL(baseURL, arch string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		// Fallback for unparseable URLs - shouldn't happen in practice
+		return baseURL
+	}
+	ext := path.Ext(u.Path)
+	base := strings.TrimSuffix(u.Path, ext)
+	u.Path = fmt.Sprintf("%s_%s%s", base, arch, ext)
+	return u.String()
 }
 
 func (ip *rhcosImageProvider) DiscardImage(data imageprovider.ImageData) error {
