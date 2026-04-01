@@ -59,9 +59,9 @@ func (f *imageFileSystem) Open(name string) (http.File, error) {
 
 	var baseImage baseFile
 	if im.kernel {
-		baseImage = f.getKernel(im.arch)
+		baseImage = f.getKernel(im.arch, im.stream)
 	} else {
-		baseImage = f.getBaseImage(im.arch, im.initramfs)
+		baseImage = f.getBaseImage(im.arch, im.stream, im.initramfs)
 	}
 
 	if err := im.Init(baseImage); err != nil {

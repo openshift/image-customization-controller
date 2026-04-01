@@ -42,13 +42,13 @@ func (f *fakeImageFileSystem) Seek(offset int64, whence int) (int64, error) { re
 func (f *fakeImageFileSystem) Readdir(n int) ([]fs.FileInfo, error)         { return nil, nil }
 func (f *fakeImageFileSystem) Open(name string) (http.File, error)          { return nil, nil }
 func (f *fakeImageFileSystem) FileSystem() http.FileSystem                  { return f }
-func (f *fakeImageFileSystem) ServeImage(name string, arch string, ignitionContent []byte, initrd, static bool) (string, error) {
+func (f *fakeImageFileSystem) ServeImage(name string, arch string, stream string, ignitionContent []byte, initrd, static bool) (string, error) {
 	f.imagesServed = append(f.imagesServed, name)
 	return "", nil
 }
-func (f *fakeImageFileSystem) ServeKernel(arch string) (string, error)   { return "", nil }
-func (f *fakeImageFileSystem) RemoveImage(name string)                   {}
-func (f *fakeImageFileSystem) HasImagesForArchitecture(arch string) bool { return true }
+func (f *fakeImageFileSystem) ServeKernel(arch string, stream string) (string, error) { return "", nil }
+func (f *fakeImageFileSystem) RemoveImage(name string)                                {}
+func (f *fakeImageFileSystem) HasImagesForArchitecture(arch string) bool              { return true }
 
 func TestLoadStaticNMState(t *testing.T) {
 	fifs := &fakeImageFileSystem{imagesServed: []string{}}
