@@ -18,6 +18,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -192,8 +194,8 @@ func TestNewImageHandlerStatic(t *testing.T) {
 
 func TestImagePattern(t *testing.T) {
 	envInputs := &env.EnvInputs{
-		DeployISO:    "/shared/ironic-python-agent.iso",
-		DeployInitrd: "/shared/ironic-python-agent.initramfs",
+		DeployISO:    "/config/ipa.iso",
+		DeployInitrd: "/config/ipa.initramfs",
 	}
 
 	tcs := []struct {
@@ -204,46 +206,87 @@ func TestImagePattern(t *testing.T) {
 		error    bool
 	}{
 		{
-
-			name:     "host iso",
-			filename: envInputs.DeployISO,
+			name:     "host iso - exact path match",
+			filename: "/config/ipa.iso",
 			arch:     "host",
 			iso:      true,
 		},
 		{
-
-			name:     "host initramfs",
-			filename: envInputs.DeployInitrd,
+			name:     "host initramfs - exact path match",
+			filename: "/config/ipa.initramfs",
 			arch:     "host",
 		},
 		{
-
-			name:     "host initramfs absolute path",
-			filename: "/shared/ironic-python-agent.initramfs",
-			arch:     "host",
-		},
-		{
-
-			name:     "aarch64 iso",
-			filename: "ironic-python-agent_aarch64.iso",
+			name:     "aarch64 iso - same directory as config",
+			filename: "/config/ipa_aarch64.iso",
 			arch:     "aarch64",
 			iso:      true,
 		},
 		{
-
-			name:     "aarch64 initramfs",
-			filename: "ironic-python-agent_aarch64.initramfs",
+			name:     "aarch64 initramfs - different directory from config",
+			filename: "/images/ipa_aarch64.initramfs",
 			arch:     "aarch64",
+		},
+		{
+			name:     "x86_64 iso - different directory from config",
+			filename: "/images/ipa_x86_64.iso",
+			arch:     "x86_64",
+			iso:      true,
+		},
+		{
+			name:     "x86_64 initramfs - relative path",
+			filename: "ipa_x86_64.initramfs",
+			arch:     "x86_64",
+		},
+		{
+			name:     "aarch64 iso - period separator",
+			filename: "ipa.aarch64.iso",
+			arch:     "aarch64",
+			iso:      true,
+		},
+		{
+			name:     "x86_64 initramfs - period separator",
+			filename: "/images/ipa.x86_64.initramfs",
+			arch:     "x86_64",
+		},
+		{
+			name:     "invalid filename - different base name",
+			filename: "/images/different-file_x86_64.iso",
+			error:    true,
+		},
+		{
+			name:     "invalid filename - different base name with arch pattern",
+			filename: "different-file_aarch64.initramfs",
+			error:    true,
+		},
+		{
+			name:     "invalid filename - different base name with period separator",
+			filename: "different-file.aarch64.initramfs",
+			error:    true,
+		},
+		{
+			name:     "invalid filename - no arch pattern",
+			filename: "some-other-file.iso",
+			error:    true,
 		},
 	}
 
 	for _, tc := range tcs {
 		t.Logf("testing %s", tc.name)
-		ii, err := parseDeployImage(envInputs, tc.filename)
+		ii, err := loadOSImage(envInputs, tc.filename)
 
 		if err != nil && !tc.error {
 			t.Errorf("got error: %v", err)
 			return
+		}
+
+		if err == nil && tc.error {
+			t.Errorf("expected error but got none")
+			return
+		}
+
+		if tc.error {
+			continue
 		}
 
 		if ii.arch != tc.arch {
@@ -255,5 +298,274 @@ func TestImagePattern(t *testing.T) {
 			t.Errorf("iso: expected %t but got %t", tc.iso, ii.iso)
 			return
 		}
+	}
+}
+
+func TestImagePatternBaseImagesOutsideSharedDir(t *testing.T) {
+	// Test that base deploy images can be located anywhere, not just in ImageSharedDir
+	envInputs := &env.EnvInputs{
+		DeployISO:      "/config/base/ipa.iso",       // Outside shared dir
+		DeployInitrd:   "/config/base/ipa.initramfs", // Outside shared dir
+		ImageSharedDir: "/shared/images",             // Different directory
+	}
+
+	tcs := []struct {
+		name     string
+		filename string
+		arch     string
+		iso      bool
+		error    bool
+	}{
+		{
+			name:     "base iso outside shared dir",
+			filename: "/config/base/ipa.iso",
+			arch:     "host",
+			iso:      true,
+		},
+		{
+			name:     "base initramfs outside shared dir",
+			filename: "/config/base/ipa.initramfs",
+			arch:     "host",
+		},
+		{
+			name:     "arch-specific iso in shared dir",
+			filename: "/shared/images/ipa_aarch64.iso",
+			arch:     "aarch64",
+			iso:      true,
+		},
+		{
+			name:     "arch-specific initramfs in shared dir",
+			filename: "/shared/images/ipa.x86_64.initramfs",
+			arch:     "x86_64",
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Logf("testing %s", tc.name)
+		ii, err := loadOSImage(envInputs, tc.filename)
+
+		if err != nil && !tc.error {
+			t.Errorf("got error: %v", err)
+			return
+		}
+
+		if err == nil && tc.error {
+			t.Errorf("expected error but got none")
+			return
+		}
+
+		if tc.error {
+			continue
+		}
+
+		if ii.arch != tc.arch {
+			t.Errorf("arch: expected %s but got %s", tc.arch, ii.arch)
+			return
+		}
+
+		if ii.iso != tc.iso {
+			t.Errorf("iso: expected %t but got %t", tc.iso, ii.iso)
+			return
+		}
+	}
+}
+
+func TestImagePatternAutoDiscovery(t *testing.T) {
+	envInputs := &env.EnvInputs{
+		DeployISO:    "/config/base/ipa.iso",
+		DeployInitrd: "/opt/images/ipa.initramfs",
+	}
+
+	tcs := []struct {
+		name     string
+		filename string
+		arch     string
+		iso      bool
+		error    bool
+	}{
+		{
+			name:     "base iso auto-discovery",
+			filename: "/config/base/ipa.iso",
+			arch:     "host",
+			iso:      true,
+		},
+		{
+			name:     "base initramfs auto-discovery",
+			filename: "/opt/images/ipa.initramfs",
+			arch:     "host",
+		},
+		{
+			name:     "arch-specific iso in base iso directory",
+			filename: "/config/base/ipa_aarch64.iso",
+			arch:     "aarch64",
+			iso:      true,
+		},
+		{
+			name:     "arch-specific initramfs in base initramfs directory",
+			filename: "/opt/images/ipa.x86_64.initramfs",
+			arch:     "x86_64",
+		},
+		{
+			name:     "invalid filename in auto-discovered directory",
+			filename: "/config/base/different-file_x86_64.iso",
+			error:    true,
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Logf("testing %s", tc.name)
+		ii, err := loadOSImage(envInputs, tc.filename)
+
+		if err != nil && !tc.error {
+			t.Errorf("got error: %v", err)
+			return
+		}
+
+		if err == nil && tc.error {
+			t.Errorf("expected error but got none")
+			return
+		}
+
+		if tc.error {
+			continue
+		}
+
+		if ii.arch != tc.arch {
+			t.Errorf("arch: expected %s but got %s", tc.arch, ii.arch)
+			return
+		}
+
+		if ii.iso != tc.iso {
+			t.Errorf("iso: expected %t but got %t", tc.iso, ii.iso)
+			return
+		}
+	}
+}
+
+func TestArchitectureFallback(t *testing.T) {
+	tempDir := t.TempDir()
+
+	envInputs := &env.EnvInputs{
+		DeployISO:      filepath.Join(tempDir, "ipa.iso"),
+		DeployInitrd:   filepath.Join(tempDir, "ipa.initramfs"),
+		ImageSharedDir: tempDir,
+	}
+
+	// Create host images only (no architecture-specific images)
+	err := os.WriteFile(envInputs.DeployISO, []byte("test iso"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(envInputs.DeployInitrd, []byte("test initramfs"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	baseUrl, err := url.Parse("http://base.test:1234")
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+
+	logger := zap.New(zap.UseDevMode(true))
+	handler, err := NewImageHandler(logger, baseUrl, envInputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the host architecture that should trigger fallback
+	hostArch := env.HostArchitecture()
+
+	// Test that host architecture is supported
+	if !handler.HasImagesForArchitecture(hostArch) {
+		t.Errorf("Expected HasImagesForArchitecture to return true for host architecture %s, but got false", hostArch)
+	}
+
+	// Test ISO fallback - should succeed because it falls back to host image
+	isoURL, err := handler.ServeImage("test-key", hostArch, []byte{}, false, false)
+	if err != nil {
+		t.Errorf("Expected ISO fallback to succeed for arch %s, got error: %v", hostArch, err)
+	}
+	if isoURL == "" {
+		t.Errorf("Expected ISO URL for arch %s, got empty string", hostArch)
+	}
+
+	// Test initramfs fallback - should succeed because it falls back to host image
+	initramfsURL, err := handler.ServeImage("test-key-initramfs", hostArch, []byte{}, true, false)
+	if err != nil {
+		t.Errorf("Expected initramfs fallback to succeed for arch %s, got error: %v", hostArch, err)
+	}
+	if initramfsURL == "" {
+		t.Errorf("Expected initramfs URL for arch %s, got empty string", hostArch)
+	}
+
+	// Test that non-host architecture is not supported
+	nonHostArch := "some_other_arch"
+	if nonHostArch == hostArch {
+		nonHostArch = "definitely_not_host_arch"
+	}
+
+	if handler.HasImagesForArchitecture(nonHostArch) {
+		t.Errorf("Expected HasImagesForArchitecture to return false for non-host architecture %s, but got true", nonHostArch)
+	}
+}
+
+func TestHasImagesForArchitecture(t *testing.T) {
+	tempDir := t.TempDir()
+
+	envInputs := &env.EnvInputs{
+		DeployISO:      filepath.Join(tempDir, "ipa.iso"),
+		DeployInitrd:   filepath.Join(tempDir, "ipa.initramfs"),
+		ImageSharedDir: tempDir,
+	}
+
+	// Create host images only (no architecture-specific images)
+	err := os.WriteFile(envInputs.DeployISO, []byte("test iso"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(envInputs.DeployInitrd, []byte("test initramfs"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create architecture-specific images for aarch64
+	err = os.WriteFile(filepath.Join(tempDir, "ipa_aarch64.iso"), []byte("aarch64 iso"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(tempDir, "ipa_aarch64.initramfs"), []byte("aarch64 initramfs"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	baseUrl, err := url.Parse("http://base.test:1234")
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+
+	logger := zap.New(zap.UseDevMode(true))
+	handler, err := NewImageHandler(logger, baseUrl, envInputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		arch      string
+		supported bool
+		desc      string
+	}{
+		{"aarch64", true, "aarch64 with both ISO and initramfs files"},
+		{"ppc64le", false, "ppc64le with no files available"},
+		{env.HostArchitecture(), true, "host architecture with fallback to host files"},
+		{"unsupported_arch", false, "unsupported architecture"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			supported := handler.HasImagesForArchitecture(tc.arch)
+			if supported != tc.supported {
+				t.Errorf("HasImagesForArchitecture(%s): expected %t, got %t", tc.arch, tc.supported, supported)
+			}
+		})
 	}
 }

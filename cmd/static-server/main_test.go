@@ -46,7 +46,8 @@ func (f *fakeImageFileSystem) ServeImage(name string, arch string, ignitionConte
 	f.imagesServed = append(f.imagesServed, name)
 	return "", nil
 }
-func (f *fakeImageFileSystem) RemoveImage(name string) {}
+func (f *fakeImageFileSystem) RemoveImage(name string)                   {}
+func (f *fakeImageFileSystem) HasImagesForArchitecture(arch string) bool { return true }
 
 func TestLoadStaticNMState(t *testing.T) {
 	fifs := &fakeImageFileSystem{imagesServed: []string{}}
