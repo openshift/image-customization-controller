@@ -106,7 +106,7 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 			imageName := strings.TrimSuffix(f.Name(), ".yaml") + suffix
 
 			isInitramfs := !strings.HasSuffix(imageName, ".iso")
-			url, err := imageServer.ServeImage(imageName, "", ign, isInitramfs, true)
+			url, err := imageServer.ServeImage(imageName, "", "", ign, isInitramfs, true)
 			if err != nil {
 				return err
 			}

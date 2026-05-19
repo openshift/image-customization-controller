@@ -34,6 +34,12 @@ const (
 	hostArchitectureKey = "host"
 )
 
+// streamArchKey identifies a base image by its OS stream and CPU architecture.
+type streamArchKey struct {
+	stream string // e.g. "rhel-9", "rhel-10"; empty = default/legacy
+	arch   string // e.g. "x86_64", "aarch64", "host"
+}
+
 // matchArchFilename attempts to match a target filename against a base filename.
 // Returns "host" for exact matches, the architecture for pattern matches, or nil if no match.
 func matchArchFilename(baseFilename, targetFilename string) *string {
@@ -63,6 +69,50 @@ func matchArchFilename(baseFilename, targetFilename string) *string {
 	return nil
 }
 
+// matchStreamFilename attempts to extract a stream name (and optionally an
+// architecture) from a target filename, given a base filename pattern.
+//
+// It matches filenames of the form:
+//
+//	baseName-STREAM.ext           → stream=STREAM, arch="host"
+//	baseName-STREAM[_.]ARCH.ext   → stream=STREAM, arch=ARCH
+//
+// Returns nil if the filename does not match the stream pattern.
+func matchStreamFilename(baseFilename, targetFilename string) *osImage {
+	if baseFilename == "" {
+		return nil
+	}
+
+	base := filepath.Base(baseFilename)
+	ext := filepath.Ext(base)
+	baseName := strings.TrimSuffix(base, ext)
+
+	target := filepath.Base(targetFilename)
+
+	// Pattern: baseName-STREAM([_.]ARCH)?ext
+	// STREAM is captured as a non-greedy match of any characters after a dash.
+	// ARCH is captured as a word after an underscore or period separator.
+	patternStr := fmt.Sprintf(`^%s-(.+?)(?:[_.](\w+))?%s$`, regexp.QuoteMeta(baseName), regexp.QuoteMeta(ext))
+	pattern := regexp.MustCompile(patternStr)
+
+	matches := pattern.FindStringSubmatch(target)
+	if matches == nil {
+		return nil
+	}
+
+	stream := matches[1]
+	arch := matches[2]
+	if arch == "" {
+		arch = hostArchitectureKey
+	}
+
+	return &osImage{
+		filename: targetFilename,
+		stream:   stream,
+		arch:     arch,
+	}
+}
+
 type imageKind int
 
 const (
@@ -74,32 +124,41 @@ const (
 type osImage struct {
 	filename string
 	arch     string
+	stream   string
 	kind     imageKind
 }
 
 func loadOSImage(envInputs *env.EnvInputs, filename string) (osImage, error) {
-	if arch := matchArchFilename(envInputs.DeployISO, filename); arch != nil {
-		return osImage{
-			filename: filename,
-			arch:     *arch,
-			kind:     imageKindISO,
-		}, nil
+	type matcher struct {
+		base string
+		kind imageKind
 	}
 
-	if arch := matchArchFilename(envInputs.DeployInitrd, filename); arch != nil {
-		return osImage{
-			filename: filename,
-			arch:     *arch,
-			kind:     imageKindInitramfs,
-		}, nil
+	matchers := []matcher{
+		{envInputs.DeployISO, imageKindISO},
+		{envInputs.DeployInitrd, imageKindInitramfs},
+	}
+	if envInputs.DeployKernel != "" {
+		matchers = append(matchers, matcher{envInputs.DeployKernel, imageKindKernel})
 	}
 
-	if arch := matchArchFilename(envInputs.DeployKernel, filename); arch != nil {
-		return osImage{
-			filename: filename,
-			arch:     *arch,
-			kind:     imageKindKernel,
-		}, nil
+	// Try stream+arch matching first (e.g. ipa-rhel-9_aarch64.iso)
+	for _, m := range matchers {
+		if img := matchStreamFilename(m.base, filename); img != nil {
+			img.kind = m.kind
+			return *img, nil
+		}
+	}
+
+	// Fall back to arch-only matching (e.g. ipa_aarch64.iso, ipa.iso)
+	for _, m := range matchers {
+		if arch := matchArchFilename(m.base, filename); arch != nil {
+			return osImage{
+				filename: filename,
+				arch:     *arch,
+				kind:     m.kind,
+			}, nil
+		}
 	}
 
 	return osImage{}, fmt.Errorf("failed to load os image name: %s", filename)
@@ -120,9 +179,9 @@ func (ie InvalidBaseImageError) Unwrap() error {
 // imageFileSystem is an http.FileSystem that creates a virtual filesystem of
 // host images.
 type imageFileSystem struct {
-	isoFiles       map[string]*baseIso
-	initramfsFiles map[string]*baseInitramfs
-	kernelFiles    map[string]*baseKernel
+	isoFiles       map[streamArchKey]*baseIso
+	initramfsFiles map[streamArchKey]*baseInitramfs
+	kernelFiles    map[streamArchKey]*baseKernel
 	baseURL        *url.URL
 	keys           map[string]string
 	images         map[string]*imageFile
@@ -135,8 +194,8 @@ var _ http.FileSystem = &imageFileSystem{}
 
 type ImageHandler interface {
 	FileSystem() http.FileSystem
-	ServeImage(key string, arch string, ignitionContent []byte, initramfs, static bool) (string, error)
-	ServeKernel(arch string) (string, error)
+	ServeImage(key string, arch string, stream string, ignitionContent []byte, initramfs, static bool) (string, error)
+	ServeKernel(arch string, stream string) (string, error)
 	RemoveImage(key string)
 	HasImagesForArchitecture(arch string) bool
 }
@@ -185,9 +244,9 @@ func findOSImageCandidates(logger logr.Logger, envInputs *env.EnvInputs, filePat
 func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInputs) (ImageHandler, error) {
 	filePaths := findOSImageCandidates(logger, envInputs, nil)
 
-	isoFiles := map[string]*baseIso{}
-	initramfsFiles := map[string]*baseInitramfs{}
-	kernelFiles := map[string]*baseKernel{}
+	isoFiles := map[streamArchKey]*baseIso{}
+	initramfsFiles := map[streamArchKey]*baseInitramfs{}
+	kernelFiles := map[streamArchKey]*baseKernel{}
 
 	logger.Info("processing image files", "total", len(filePaths))
 	for _, filePath := range filePaths {
@@ -199,15 +258,16 @@ func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInp
 			continue
 		}
 
-		logger.Info("image loaded", "filename", osImage.filename, "arch", osImage.arch, "kind", osImage.kind)
+		key := streamArchKey{stream: osImage.stream, arch: osImage.arch}
+		logger.Info("image loaded", "filename", osImage.filename, "arch", osImage.arch, "stream", osImage.stream, "kind", osImage.kind)
 
 		switch osImage.kind {
 		case imageKindISO:
-			isoFiles[osImage.arch] = newBaseIso(filePath)
+			isoFiles[key] = newBaseIso(filePath)
 		case imageKindInitramfs:
-			initramfsFiles[osImage.arch] = newBaseInitramfs(filePath)
+			initramfsFiles[key] = newBaseInitramfs(filePath)
 		case imageKindKernel:
-			kernelFiles[osImage.arch] = newBaseKernel(filePath)
+			kernelFiles[key] = newBaseKernel(filePath)
 		}
 	}
 
@@ -227,68 +287,93 @@ func (f *imageFileSystem) FileSystem() http.FileSystem {
 	return f
 }
 
-func (f *imageFileSystem) getBaseImage(arch string, initramfs bool) baseFile {
+func (f *imageFileSystem) getBaseImage(arch string, stream string, initramfs bool) baseFile {
 	if arch == "" {
 		arch = hostArchitectureKey
 	}
 
-	f.log.Info("getBaseImage", "arch", arch, "initramfs", initramfs)
+	f.log.Info("getBaseImage", "arch", arch, "stream", stream, "initramfs", initramfs)
 
-	getFile := func(arch string) baseFile {
+	getFile := func(key streamArchKey) baseFile {
 		if initramfs {
-			if file, exists := f.initramfsFiles[arch]; exists {
+			if file, exists := f.initramfsFiles[key]; exists {
 				return file
 			}
 		} else {
-			if file, exists := f.isoFiles[arch]; exists {
+			if file, exists := f.isoFiles[key]; exists {
 				return file
 			}
 		}
 		return nil
 	}
 
-	if file := getFile(arch); file != nil {
+	// Try exact (stream, arch) match
+	if file := getFile(streamArchKey{stream: stream, arch: arch}); file != nil {
 		return file
 	}
 
-	if arch == env.HostArchitecture() {
-		if file := getFile(hostArchitectureKey); file != nil {
+	// Fall back to default stream (empty) for the same arch
+	if stream != "" {
+		if file := getFile(streamArchKey{stream: "", arch: arch}); file != nil {
 			return file
+		}
+	}
+
+	// Fall back to host architecture key
+	if arch == env.HostArchitecture() {
+		if file := getFile(streamArchKey{stream: stream, arch: hostArchitectureKey}); file != nil {
+			return file
+		}
+		if stream != "" {
+			if file := getFile(streamArchKey{stream: "", arch: hostArchitectureKey}); file != nil {
+				return file
+			}
 		}
 	}
 
 	return nil
 }
 
-func (f *imageFileSystem) getKernel(arch string) baseFile {
+func (f *imageFileSystem) getKernel(arch string, stream string) baseFile {
 	if arch == "" {
 		arch = hostArchitectureKey
 	}
 
-	f.log.Info("getKernel", "arch", arch)
+	f.log.Info("getKernel", "arch", arch, "stream", stream)
 
-	getFile := func(arch string) baseFile {
-		if file, exists := f.kernelFiles[arch]; exists {
+	getFile := func(key streamArchKey) baseFile {
+		if file, exists := f.kernelFiles[key]; exists {
 			return file
 		}
 		return nil
 	}
 
-	if file := getFile(arch); file != nil {
+	if file := getFile(streamArchKey{stream: stream, arch: arch}); file != nil {
 		return file
 	}
 
-	if arch == env.HostArchitecture() {
-		if file := getFile(hostArchitectureKey); file != nil {
+	if stream != "" {
+		if file := getFile(streamArchKey{stream: "", arch: arch}); file != nil {
 			return file
+		}
+	}
+
+	if arch == env.HostArchitecture() {
+		if file := getFile(streamArchKey{stream: stream, arch: hostArchitectureKey}); file != nil {
+			return file
+		}
+		if stream != "" {
+			if file := getFile(streamArchKey{stream: "", arch: hostArchitectureKey}); file != nil {
+				return file
+			}
 		}
 	}
 
 	return nil
 }
 
-func (f *imageFileSystem) ServeKernel(arch string) (string, error) {
-	kernel := f.getKernel(arch)
+func (f *imageFileSystem) ServeKernel(arch string, stream string) (string, error) {
+	kernel := f.getKernel(arch, stream)
 	if kernel == nil {
 		return "", nil
 	}
@@ -298,7 +383,12 @@ func (f *imageFileSystem) ServeKernel(arch string) (string, error) {
 		return "", err
 	}
 
-	key := fmt.Sprintf("kernel-%s", arch)
+	keyParts := []string{"kernel"}
+	if stream != "" {
+		keyParts = append(keyParts, stream)
+	}
+	keyParts = append(keyParts, arch)
+	key := strings.Join(keyParts, "-")
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -321,6 +411,7 @@ func (f *imageFileSystem) ServeKernel(arch string) (string, error) {
 	f.images[key] = &imageFile{
 		name:   name,
 		arch:   arch,
+		stream: stream,
 		size:   size,
 		kernel: true,
 	}
@@ -329,7 +420,28 @@ func (f *imageFileSystem) ServeKernel(arch string) (string, error) {
 }
 
 func (f *imageFileSystem) HasImagesForArchitecture(arch string) bool {
-	return f.getBaseImage(arch, false) != nil && f.getBaseImage(arch, true) != nil
+	streams := f.availableStreams()
+	for _, stream := range streams {
+		if f.getBaseImage(arch, stream, false) != nil && f.getBaseImage(arch, stream, true) != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *imageFileSystem) availableStreams() []string {
+	seen := map[string]struct{}{}
+	for key := range f.isoFiles {
+		seen[key.stream] = struct{}{}
+	}
+	for key := range f.initramfsFiles {
+		seen[key.stream] = struct{}{}
+	}
+	streams := make([]string, 0, len(seen))
+	for s := range seen {
+		streams = append(streams, s)
+	}
+	return streams
 }
 
 func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {
@@ -343,9 +455,12 @@ func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {
 	return
 }
 
-func (f *imageFileSystem) ServeImage(key string, arch string, ignitionContent []byte, initramfs, static bool) (string, error) {
-	f.log.Info("ServeImage")
-	baseImage := f.getBaseImage(arch, initramfs)
+func (f *imageFileSystem) ServeImage(key string, arch string, stream string, ignitionContent []byte, initramfs, static bool) (string, error) {
+	f.log.Info("ServeImage", "arch", arch, "stream", stream)
+	baseImage := f.getBaseImage(arch, stream, initramfs)
+	if baseImage == nil {
+		return "", InvalidBaseImageError{cause: fmt.Errorf("no base image found for arch=%s stream=%s initramfs=%v", arch, stream, initramfs)}
+	}
 
 	size, err := baseImage.Size()
 	if err != nil {
@@ -372,6 +487,7 @@ func (f *imageFileSystem) ServeImage(key string, arch string, ignitionContent []
 		f.images[key] = &imageFile{
 			name:            name,
 			arch:            arch,
+			stream:          stream,
 			size:            size,
 			ignitionContent: ignitionContent,
 			initramfs:       initramfs,

@@ -27,6 +27,7 @@ type imageFile struct {
 	name            string
 	size            int64
 	arch            string
+	stream          string
 	ignitionContent []byte
 	imageReader     isoeditor.ImageReader
 	initramfs       bool

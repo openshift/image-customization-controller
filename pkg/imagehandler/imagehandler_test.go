@@ -53,8 +53,8 @@ func TestImageHandler(t *testing.T) {
 	rr := httptest.NewRecorder()
 	imageServer := &imageFileSystem{
 		log: zap.New(zap.UseDevMode(true)),
-		isoFiles: map[string]*baseIso{
-			"host": {baseFileData{filename: "dummyfile.iso", size: 12345}},
+		isoFiles: map[streamArchKey]*baseIso{
+			{arch: "host"}: {baseFileData{filename: "dummyfile.iso", size: 12345}},
 		},
 		baseURL: baseURL,
 		keys: map[string]string{
@@ -99,23 +99,23 @@ func TestNewImageHandler(t *testing.T) {
 		keys:           map[string]string{},
 		mu:             &sync.Mutex{},
 		images:         map[string]*imageFile{},
-		isoFiles:       map[string]*baseIso{},
-		initramfsFiles: map[string]*baseInitramfs{},
+		isoFiles:       map[streamArchKey]*baseIso{},
+		initramfsFiles: map[streamArchKey]*baseInitramfs{},
 	}
 
 	iso := newBaseIso("dummyfile.iso")
 	iso.size = 123456
-	ifs.isoFiles["host"] = iso
+	ifs.isoFiles[streamArchKey{arch: "host"}] = iso
 
 	initramfs := newBaseInitramfs("dummyfile.initramfs")
 	initramfs.size = 12345
-	ifs.initramfsFiles["host"] = initramfs
+	ifs.initramfsFiles[streamArchKey{arch: "host"}] = initramfs
 
-	url1, err := ifs.ServeImage("test-key-1", "", []byte{}, false, false)
+	url1, err := ifs.ServeImage("test-key-1", "", "", []byte{}, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	url2, err := ifs.ServeImage("test-key-2", "", []byte{}, true, false)
+	url2, err := ifs.ServeImage("test-key-2", "", "", []byte{}, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -125,7 +125,7 @@ func TestNewImageHandler(t *testing.T) {
 		t.Errorf("can't look up image file \"%s\"", name2)
 	}
 
-	url1again, err := ifs.ServeImage("test-key-1", "", []byte{}, false, false)
+	url1again, err := ifs.ServeImage("test-key-1", "", "", []byte{}, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -135,7 +135,7 @@ func TestNewImageHandler(t *testing.T) {
 	}
 
 	ifs.RemoveImage("test-key-1")
-	url1yetagain, err := ifs.ServeImage("test-key-1", "", []byte{}, false, false)
+	url1yetagain, err := ifs.ServeImage("test-key-1", "", "", []byte{}, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -155,27 +155,27 @@ func TestNewImageHandlerStatic(t *testing.T) {
 		keys:           map[string]string{},
 		mu:             &sync.Mutex{},
 		images:         map[string]*imageFile{},
-		isoFiles:       map[string]*baseIso{},
-		initramfsFiles: map[string]*baseInitramfs{},
+		isoFiles:       map[streamArchKey]*baseIso{},
+		initramfsFiles: map[streamArchKey]*baseInitramfs{},
 	}
 
 	iso := newBaseIso("dummyfile.iso")
 	iso.size = 123456
-	ifs.isoFiles["host"] = iso
+	ifs.isoFiles[streamArchKey{arch: "host"}] = iso
 
 	initramfs := newBaseInitramfs("dummyfile.initramfs")
 	initramfs.size = 12345
-	ifs.initramfsFiles["host"] = initramfs
+	ifs.initramfsFiles[streamArchKey{arch: "host"}] = initramfs
 
-	url1, err := ifs.ServeImage("test-name-1.iso", "", []byte{}, false, true)
+	url1, err := ifs.ServeImage("test-name-1.iso", "", "", []byte{}, false, true)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	url2, err := ifs.ServeImage("test-name-2.initramfs", "", []byte{}, true, true)
+	url2, err := ifs.ServeImage("test-name-2.initramfs", "", "", []byte{}, true, true)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	url1again, err := ifs.ServeImage("test-name-1.iso", "", []byte{}, false, true)
+	url1again, err := ifs.ServeImage("test-name-1.iso", "", "", []byte{}, false, true)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -303,6 +303,107 @@ func TestImagePattern(t *testing.T) {
 			t.Errorf("kind: expected %d but got %d", tc.kind, ii.kind)
 			return
 		}
+	}
+}
+
+func TestImagePatternWithStream(t *testing.T) {
+	envInputs := &env.EnvInputs{
+		DeployISO:    "/config/ipa.iso",
+		DeployInitrd: "/config/ipa.initramfs",
+	}
+
+	tcs := []struct {
+		name     string
+		filename string
+		arch     string
+		stream   string
+		kind     imageKind
+		error    bool
+	}{
+		{
+			name:     "stream iso - host arch",
+			filename: "/config/ipa-rhel-9.iso",
+			arch:     "host",
+			stream:   "rhel-9",
+			kind:     imageKindISO,
+		},
+		{
+			name:     "stream iso with arch",
+			filename: "/config/ipa-rhel-9_aarch64.iso",
+			arch:     "aarch64",
+			stream:   "rhel-9",
+			kind:     imageKindISO,
+		},
+		{
+			name:     "stream initramfs - host arch",
+			filename: "/config/ipa-rhel-10.initramfs",
+			arch:     "host",
+			stream:   "rhel-10",
+			kind:     imageKindInitramfs,
+		},
+		{
+			name:     "stream initramfs with arch (period separator)",
+			filename: "/config/ipa-rhel-10.x86_64.initramfs",
+			arch:     "x86_64",
+			stream:   "rhel-10",
+			kind:     imageKindInitramfs,
+		},
+		{
+			name:     "stream iso with arch (underscore separator)",
+			filename: "/images/ipa-rhel-10_aarch64.iso",
+			arch:     "aarch64",
+			stream:   "rhel-10",
+			kind:     imageKindISO,
+		},
+		{
+			name:     "non-stream file still matches as arch-only",
+			filename: "/config/ipa_aarch64.iso",
+			arch:     "aarch64",
+			kind:     imageKindISO,
+		},
+		{
+			name:     "exact match still works",
+			filename: "/config/ipa.iso",
+			arch:     "host",
+			kind:     imageKindISO,
+		},
+		{
+			name:     "invalid filename - different base name with stream",
+			filename: "/images/different-rhel-9_x86_64.iso",
+			error:    true,
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			ii, err := loadOSImage(envInputs, tc.filename)
+
+			if err != nil && !tc.error {
+				t.Errorf("got error: %v", err)
+				return
+			}
+
+			if err == nil && tc.error {
+				t.Errorf("expected error but got none")
+				return
+			}
+
+			if tc.error {
+				return
+			}
+
+			if ii.arch != tc.arch {
+				t.Errorf("arch: expected %s but got %s", tc.arch, ii.arch)
+			}
+
+			if ii.stream != tc.stream {
+				t.Errorf("stream: expected %s but got %s", tc.stream, ii.stream)
+			}
+
+			if ii.kind != tc.kind {
+				t.Errorf("kind: expected %d but got %d", tc.kind, ii.kind)
+			}
+		})
 	}
 }
 
@@ -570,7 +671,7 @@ func TestArchitectureFallback(t *testing.T) {
 	}
 
 	// Test ISO fallback - should succeed because it falls back to host image
-	isoURL, err := handler.ServeImage("test-key", hostArch, []byte{}, false, false)
+	isoURL, err := handler.ServeImage("test-key", hostArch, "", []byte{}, false, false)
 	if err != nil {
 		t.Errorf("Expected ISO fallback to succeed for arch %s, got error: %v", hostArch, err)
 	}
@@ -579,7 +680,7 @@ func TestArchitectureFallback(t *testing.T) {
 	}
 
 	// Test initramfs fallback - should succeed because it falls back to host image
-	initramfsURL, err := handler.ServeImage("test-key-initramfs", hostArch, []byte{}, true, false)
+	initramfsURL, err := handler.ServeImage("test-key-initramfs", hostArch, "", []byte{}, true, false)
 	if err != nil {
 		t.Errorf("Expected initramfs fallback to succeed for arch %s, got error: %v", hostArch, err)
 	}
@@ -720,6 +821,55 @@ func TestHasImagesForArchitectureWithKernel(t *testing.T) {
 	}
 }
 
+func TestHasImagesForArchitectureWithStreams(t *testing.T) {
+	tempDir := t.TempDir()
+
+	envInputs := &env.EnvInputs{
+		DeployISO:      filepath.Join(tempDir, "ipa.iso"),
+		DeployInitrd:   filepath.Join(tempDir, "ipa.initramfs"),
+		ImageSharedDir: tempDir,
+	}
+
+	// Create stream-qualified images only (no default-stream images)
+	err := os.WriteFile(filepath.Join(tempDir, "ipa-rhel-9_aarch64.iso"), []byte("rhel9 aarch64 iso"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(tempDir, "ipa-rhel-9_aarch64.initramfs"), []byte("rhel9 aarch64 initramfs"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	baseUrl, err := url.Parse("http://base.test:1234")
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+
+	logger := zap.New(zap.UseDevMode(true))
+	handler, err := NewImageHandler(logger, baseUrl, envInputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		arch      string
+		supported bool
+		desc      string
+	}{
+		{"aarch64", true, "aarch64 with stream-qualified ISO and initramfs"},
+		{"x86_64", false, "x86_64 with no files in any stream"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			supported := handler.HasImagesForArchitecture(tc.arch)
+			if supported != tc.supported {
+				t.Errorf("HasImagesForArchitecture(%s): expected %t, got %t", tc.arch, tc.supported, supported)
+			}
+		})
+	}
+}
+
 func TestServeKernel(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -745,11 +895,11 @@ func TestServeKernel(t *testing.T) {
 
 	ifs := &imageFileSystem{
 		log:            logger,
-		isoFiles:       map[string]*baseIso{},
-		initramfsFiles: map[string]*baseInitramfs{},
-		kernelFiles: map[string]*baseKernel{
-			"host":    newBaseKernel(kernelPath),
-			"aarch64": newBaseKernel(aarch64KernelPath),
+		isoFiles:       map[streamArchKey]*baseIso{},
+		initramfsFiles: map[streamArchKey]*baseInitramfs{},
+		kernelFiles: map[streamArchKey]*baseKernel{
+			{arch: "host"}:    newBaseKernel(kernelPath),
+			{arch: "aarch64"}: newBaseKernel(aarch64KernelPath),
 		},
 		baseURL: baseUrl,
 		keys:    map[string]string{},
@@ -758,7 +908,7 @@ func TestServeKernel(t *testing.T) {
 	}
 
 	// Test serving kernel for aarch64
-	kernelURL, err := ifs.ServeKernel("aarch64")
+	kernelURL, err := ifs.ServeKernel("aarch64", "")
 	if err != nil {
 		t.Fatalf("unexpected error serving aarch64 kernel: %v", err)
 	}
@@ -768,7 +918,7 @@ func TestServeKernel(t *testing.T) {
 	}
 
 	// Test serving kernel for host architecture (falls back to "host" key)
-	hostKernelURL, err := ifs.ServeKernel(env.HostArchitecture())
+	hostKernelURL, err := ifs.ServeKernel(env.HostArchitecture(), "")
 	if err != nil {
 		t.Fatalf("unexpected error serving host kernel: %v", err)
 	}
@@ -777,7 +927,7 @@ func TestServeKernel(t *testing.T) {
 	}
 
 	// Test serving kernel for unsupported architecture returns empty string
-	noKernelURL, err := ifs.ServeKernel("ppc64le")
+	noKernelURL, err := ifs.ServeKernel("ppc64le", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -786,7 +936,7 @@ func TestServeKernel(t *testing.T) {
 	}
 
 	// Test idempotency - serving same arch again returns same URL
-	kernelURLAgain, err := ifs.ServeKernel("aarch64")
+	kernelURLAgain, err := ifs.ServeKernel("aarch64", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -805,9 +955,9 @@ func TestServeKernelNoKernelConfigured(t *testing.T) {
 
 	ifs := &imageFileSystem{
 		log:            logger,
-		isoFiles:       map[string]*baseIso{},
-		initramfsFiles: map[string]*baseInitramfs{},
-		kernelFiles:    map[string]*baseKernel{},
+		isoFiles:       map[streamArchKey]*baseIso{},
+		initramfsFiles: map[streamArchKey]*baseInitramfs{},
+		kernelFiles:    map[streamArchKey]*baseKernel{},
 		baseURL:        baseUrl,
 		keys:           map[string]string{},
 		images:         map[string]*imageFile{},
@@ -815,7 +965,7 @@ func TestServeKernelNoKernelConfigured(t *testing.T) {
 	}
 
 	// With no kernel files, ServeKernel should return empty string
-	kernelURL, err := ifs.ServeKernel("x86_64")
+	kernelURL, err := ifs.ServeKernel("x86_64", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

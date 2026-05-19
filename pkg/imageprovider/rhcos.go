@@ -92,13 +92,21 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 }
 
 func imageKey(data imageprovider.ImageData) string {
-	return fmt.Sprintf("%s-%s-%s-%s.%s",
+	return fmt.Sprintf("%s-%s-%s-%s-%s.%s",
 		data.ImageMetadata.Namespace,
 		data.ImageMetadata.Name,
 		data.ImageMetadata.UID,
+		streamFromImageData(data),
 		data.Architecture,
 		data.Format,
 	)
+}
+
+func streamFromImageData(data imageprovider.ImageData) string {
+	if data.ImageMetadata != nil && data.ImageMetadata.Labels != nil {
+		return data.ImageMetadata.Labels["coreos.openshift.io/stream"]
+	}
+	return ""
 }
 
 func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkData imageprovider.NetworkData, log logr.Logger) (imageprovider.GeneratedImage, error) {
@@ -108,7 +116,9 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 		return generated, err
 	}
 
-	url, err := ip.ImageHandler.ServeImage(imageKey(data), data.Architecture, ignitionConfig,
+	stream := streamFromImageData(data)
+
+	url, err := ip.ImageHandler.ServeImage(imageKey(data), data.Architecture, stream, ignitionConfig,
 		data.Format == metal3.ImageFormatInitRD, false)
 	if errors.As(err, &imagehandler.InvalidBaseImageError{}) {
 		return generated, imageprovider.BuildInvalidError(err)
@@ -119,7 +129,7 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 	generated.ImageURL = url
 
 	if data.Format == metal3.ImageFormatInitRD {
-		kernelURL, err := ip.ImageHandler.ServeKernel(data.Architecture)
+		kernelURL, err := ip.ImageHandler.ServeKernel(data.Architecture, stream)
 		if err != nil {
 			return generated, err
 		}
@@ -128,31 +138,44 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 		}
 		generated.KernelURL = kernelURL
 
-		// Override the rootfs URL for non-host architectures. Ironic's global
-		// kernel_append_params contains a rootfs URL for the host architecture.
-		// For other architectures we need to point to the arch-specific rootfs.
-		if ip.EnvInputs.IronicRootfsURL != "" && data.Architecture != env.HostArchitecture() {
-			archRootfsURL := archSpecificURL(ip.EnvInputs.IronicRootfsURL, data.Architecture)
-			generated.ExtraKernelParams = "coreos.live.rootfs_url=" + archRootfsURL
+		// Set the rootfs URL for every node. The stream and architecture
+		// determine which rootfs image is used (e.g. rhel-9 vs rhel-10,
+		// x86_64 vs aarch64).
+		if ip.EnvInputs.IronicRootfsURL != "" {
+			rootfsURL := streamArchSpecificURL(ip.EnvInputs.IronicRootfsURL, stream, data.Architecture)
+			generated.ExtraKernelParams = "coreos.live.rootfs_url=" + rootfsURL
 		}
 	}
 
 	return generated, nil
 }
 
-// archSpecificURL transforms a base URL like
-// "http://host:port/images/ironic-python-agent.rootfs" into an arch-specific
-// URL like "http://host:port/images/ironic-python-agent_aarch64.rootfs".
-// Preserves query parameters and URL fragments.
-func archSpecificURL(baseURL, arch string) string {
+// streamArchSpecificURL transforms a base URL like
+// "http://host:port/images/ironic-python-agent.rootfs" into a stream- and/or
+// arch-specific URL. The stream suffix (e.g. "-rhel-10") is added when stream
+// is non-empty, and the arch suffix (e.g. "_aarch64") is added when the
+// architecture differs from the host. Examples:
+//
+//	stream="rhel-10", arch=host  → ironic-python-agent-rhel-10.rootfs
+//	stream="",        arch=arm64 → ironic-python-agent_aarch64.rootfs
+//	stream="rhel-10", arch=arm64 → ironic-python-agent-rhel-10_aarch64.rootfs
+func streamArchSpecificURL(baseURL, stream, arch string) string {
 	u, err := url.Parse(baseURL)
 	if err != nil {
-		// Fallback for unparseable URLs - shouldn't happen in practice
 		return baseURL
+	}
+	if arch == "" {
+		arch = env.HostArchitecture()
 	}
 	ext := path.Ext(u.Path)
 	base := strings.TrimSuffix(u.Path, ext)
-	u.Path = fmt.Sprintf("%s_%s%s", base, arch, ext)
+	if stream != "" {
+		base = fmt.Sprintf("%s-%s", base, stream)
+	}
+	if arch != env.HostArchitecture() {
+		base = fmt.Sprintf("%s_%s", base, arch)
+	}
+	u.Path = base + ext
 	return u.String()
 }
 
