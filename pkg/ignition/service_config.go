@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	ignition_config_types_32 "github.com/coreos/ignition/v2/config/v3_2/types"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -48,7 +48,11 @@ func (b *ignitionBuilder) IronicAgentConf(ironicInspectorVlanInterfaces string) 
 api_url = %s
 inspection_callback_url = %s
 insecure = True
+
+collect_lldp = True
 enable_vlan_interfaces = %s
+inspection_collectors = default,logs
+inspection_dhcp_all_interfaces = True
 `
 	ironicURLs := processURLs(b.ironicBaseURL, "", defaultIronicPort)
 	inspectorURLs := processURLs(b.ironicInspectorBaseURL, "/v1/continue", defaultInspectorPort)
@@ -57,7 +61,7 @@ enable_vlan_interfaces = %s
 }
 
 func (b *ignitionBuilder) IronicAgentService(copyNetwork bool) ignition_config_types_32.Unit {
-	flags := ""
+	flags := " --tls-verify=false"
 	if b.ironicAgentPullSecret != "" {
 		flags += " --authfile=/etc/authfile.json"
 	}
@@ -86,7 +90,7 @@ WantedBy=multi-user.target
 
 	return ignition_config_types_32.Unit{
 		Name:     "ironic-agent.service",
-		Enabled:  pointer.Bool(true),
+		Enabled:  ptr.To(true),
 		Contents: &contents,
 	}
 }

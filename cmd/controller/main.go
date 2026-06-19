@@ -33,9 +33,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	metal3iocontroller "github.com/metal3-io/baremetal-operator/controllers/metal3.io"
+	metal3iocontroller "github.com/metal3-io/baremetal-operator/pkg/controllers"
 	"github.com/metal3-io/baremetal-operator/pkg/secretutils"
 	"github.com/openshift/image-customization-controller/pkg/env"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
@@ -88,12 +89,19 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 		}),
 	}
 
+	if watchNamespace != "" {
+		cacheOptions.DefaultNamespaces = map[string]cache.Config{
+			watchNamespace: {},
+		}
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:             scheme,
-		Port:               0, // Add flag with default of 9443 when adding webhooks
-		Namespace:          watchNamespace,
-		Cache:              cacheOptions,
-		MetricsBindAddress: metricsBindAddr,
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress:   metricsBindAddr,
+			SecureServing: false,
+		},
+		Cache: cacheOptions,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -107,7 +115,7 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 		Scheme:        mgr.GetScheme(),
 		ImageProvider: imageprovider.NewRHCOSImageProvider(imageServer, envInputs),
 	}
-	if err = (&imgReconciler).SetupWithManager(mgr); err != nil {
+	if err = (&imgReconciler).SetupWithManager(mgr, 1); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PreprovisioningImage")
 		return err
 	}
@@ -163,10 +171,10 @@ func main() {
 	if envInputs.IronicAgentPullSecret == "" {
 		pullSecretRaw, err := os.ReadFile("/run/secrets/pull-secret")
 		if err != nil {
-			setupLog.Error(err, "unable to read secret from mounted file")
-			os.Exit(1)
+			setupLog.Info("pull secret not available via env var or mounted file, continuing without it")
+		} else {
+			envInputs.IronicAgentPullSecret = string(pullSecretRaw)
 		}
-		envInputs.IronicAgentPullSecret = string(pullSecretRaw)
 	}
 
 	imageServer, err := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), publishURL, envInputs)
@@ -190,8 +198,12 @@ func main() {
 		}
 	}()
 
-	if err := runController(watchNamespace, imageServer, envInputs, metricsBindAddr); err != nil {
-		setupLog.Error(err, "problem running controller")
-		os.Exit(1)
+	for {
+		err := runController(watchNamespace, imageServer, envInputs, metricsBindAddr)
+		if err == nil {
+			break
+		}
+		setupLog.Error(err, "problem running controller, retrying in 10s")
+		time.Sleep(10 * time.Second)
 	}
 }

@@ -19,26 +19,30 @@ package cluster
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	eventsv1client "k8s.io/client-go/kubernetes/typed/events/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/pointer"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
-	logf "sigs.k8s.io/controller-runtime/pkg/internal/log"
 
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+	logf "sigs.k8s.io/controller-runtime/pkg/internal/log"
 	intrec "sigs.k8s.io/controller-runtime/pkg/internal/recorder"
+	"sigs.k8s.io/controller-runtime/pkg/recorder"
 )
 
 // Cluster provides various methods to interact with a cluster.
 type Cluster interface {
+	recorder.Provider
+
 	// GetHTTPClient returns an HTTP client that can be used to talk to the apiserver
 	GetHTTPClient() *http.Client
 
@@ -60,14 +64,11 @@ type Cluster interface {
 	// GetFieldIndexer returns a client.FieldIndexer configured with the client
 	GetFieldIndexer() client.FieldIndexer
 
-	// GetEventRecorderFor returns a new EventRecorder for the provided name
-	GetEventRecorderFor(name string) record.EventRecorder
-
 	// GetRESTMapper returns a RESTMapper
 	GetRESTMapper() meta.RESTMapper
 
-	// GetAPIReader returns a reader that will be configured to use the API server.
-	// This should be used sparingly and only when the client does not fit your
+	// GetAPIReader returns a reader that will be configured to use the API server directly.
+	// This should be used sparingly and only when the cached client does not fit your
 	// use case.
 	GetAPIReader() client.Reader
 
@@ -88,24 +89,6 @@ type Options struct {
 	// Logger is the logger that should be used by this Cluster.
 	// If none is set, it defaults to log.Log global logger.
 	Logger logr.Logger
-
-	// SyncPeriod determines the minimum frequency at which watched resources are
-	// reconciled. A lower period will correct entropy more quickly, but reduce
-	// responsiveness to change if there are many watched resources. Change this
-	// value only if you know what you are doing. Defaults to 10 hours if unset.
-	// there will a 10 percent jitter between the SyncPeriod of all controllers
-	// so that all controllers will not send list requests simultaneously.
-	SyncPeriod *time.Duration
-
-	// Namespace if specified restricts the manager's cache to watch objects in
-	// the desired namespace Defaults to all namespaces
-	//
-	// Note: If a namespace is specified, controllers can still Watch for a
-	// cluster-scoped resource (e.g Node).  For namespaced resources the cache
-	// will only hold objects from the desired namespace.
-	//
-	// Deprecated: Use Cache.Namespaces instead.
-	Namespace string
 
 	// HTTPClient is the http client that will be used to create the default
 	// Cache and Client. If not set the rest.HTTPClientFor function will be used
@@ -141,18 +124,6 @@ type Options struct {
 	// Only use a custom NewClient if you know what you are doing.
 	NewClient client.NewClientFunc
 
-	// ClientDisableCacheFor tells the client that, if any cache is used, to bypass it
-	// for the given objects.
-	//
-	// Deprecated: Use Client.Cache.DisableFor instead.
-	ClientDisableCacheFor []client.Object
-
-	// DryRunClient specifies whether the client should be configured to enforce
-	// dryRun mode.
-	//
-	// Deprecated: Use Client.DryRun instead.
-	DryRunClient bool
-
 	// EventBroadcaster records Events emitted by the manager and sends them to the Kubernetes API
 	// Use this to customize the event correlator and spam filter
 	//
@@ -179,14 +150,20 @@ func New(config *rest.Config, opts ...Option) (Cluster, error) {
 		return nil, errors.New("must specify Config")
 	}
 
+	originalConfig := config
+
+	config = rest.CopyConfig(config)
+	if config.UserAgent == "" {
+		config.UserAgent = rest.DefaultKubernetesUserAgent()
+	}
+
 	options := Options{}
 	for _, opt := range opts {
 		opt(&options)
 	}
 	options, err := setOptionsDefaults(options, config)
 	if err != nil {
-		options.Logger.Error(err, "Failed to set defaults")
-		return nil, err
+		return nil, fmt.Errorf("failed setting cluster default options: %w", err)
 	}
 
 	// Create the mapper provider
@@ -207,12 +184,6 @@ func New(config *rest.Config, opts ...Option) (Cluster, error) {
 		}
 		if cacheOpts.HTTPClient == nil {
 			cacheOpts.HTTPClient = options.HTTPClient
-		}
-		if cacheOpts.SyncPeriod == nil {
-			cacheOpts.SyncPeriod = options.SyncPeriod
-		}
-		if len(cacheOpts.Namespaces) == 0 && options.Namespace != "" {
-			cacheOpts.Namespaces = []string{options.Namespace}
 		}
 	}
 	cache, err := options.NewCache(config, cacheOpts)
@@ -240,16 +211,6 @@ func New(config *rest.Config, opts ...Option) (Cluster, error) {
 		if clientOpts.Cache.Reader == nil {
 			clientOpts.Cache.Reader = cache
 		}
-
-		// For backward compatibility, the ClientDisableCacheFor option should
-		// be appended to the DisableFor option in the client.
-		clientOpts.Cache.DisableFor = append(clientOpts.Cache.DisableFor, options.ClientDisableCacheFor...)
-
-		if clientOpts.DryRun == nil && options.DryRunClient {
-			// For backward compatibility, the DryRunClient (if set) option should override
-			// the DryRun option in the client (if unset).
-			clientOpts.DryRun = pointer.Bool(true)
-		}
 	}
 	clientWriter, err := options.NewClient(config, clientOpts)
 	if err != nil {
@@ -275,7 +236,7 @@ func New(config *rest.Config, opts ...Option) (Cluster, error) {
 	}
 
 	return &cluster{
-		config:           config,
+		config:           originalConfig,
 		httpClient:       options.HTTPClient,
 		scheme:           options.Scheme,
 		cache:            cache,
@@ -324,14 +285,22 @@ func setOptionsDefaults(options Options, config *rest.Config) (Options, error) {
 
 	// This is duplicated with pkg/manager, we need it here to provide
 	// the user with an EventBroadcaster and there for the Leader election
+	evtCl, err := eventsv1client.NewForConfigAndClient(config, options.HTTPClient)
+	if err != nil {
+		return options, err
+	}
+
+	// This is duplicated with pkg/manager, we need it here to provide
+	// the user with an EventBroadcaster and there for the Leader election
 	if options.EventBroadcaster == nil {
 		// defer initialization to avoid leaking by default
-		options.makeBroadcaster = func() (record.EventBroadcaster, bool) {
-			return record.NewBroadcaster(), true
+		options.makeBroadcaster = func() (record.EventBroadcaster, events.EventBroadcaster, bool) {
+			return record.NewBroadcaster(), events.NewBroadcaster(&events.EventSinkImpl{Interface: evtCl}), true
 		}
 	} else {
-		options.makeBroadcaster = func() (record.EventBroadcaster, bool) {
-			return options.EventBroadcaster, false
+		// keep supporting the options.EventBroadcaster in the old API, but do not introduce it for the new one.
+		options.makeBroadcaster = func() (record.EventBroadcaster, events.EventBroadcaster, bool) {
+			return options.EventBroadcaster, events.NewBroadcaster(&events.EventSinkImpl{Interface: evtCl}), false
 		}
 	}
 
