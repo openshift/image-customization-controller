@@ -51,7 +51,7 @@ insecure = True
 
 collect_lldp = True
 enable_vlan_interfaces = %s
-inspection_collectors = default,extra-hardware,logs
+inspection_collectors = default,logs
 inspection_dhcp_all_interfaces = True
 `
 	ironicURLs := processURLs(b.ironicBaseURL, "", defaultIronicPort)
