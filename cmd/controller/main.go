@@ -198,8 +198,12 @@ func main() {
 		}
 	}()
 
-	if err := runController(watchNamespace, imageServer, envInputs, metricsBindAddr); err != nil {
-		setupLog.Error(err, "problem running controller")
-		os.Exit(1)
+	for {
+		err := runController(watchNamespace, imageServer, envInputs, metricsBindAddr)
+		if err == nil {
+			break
+		}
+		setupLog.Error(err, "problem running controller, retrying in 10s")
+		time.Sleep(10 * time.Second)
 	}
 }
