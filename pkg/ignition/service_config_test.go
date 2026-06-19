@@ -29,7 +29,7 @@ func TestIronicPythonAgentConf(t *testing.T) {
 				Node: ignition_config_types_32.Node{Path: "/etc/ironic-python-agent.conf", Overwrite: &expectedOverwrite},
 				FileEmbedded1: ignition_config_types_32.FileEmbedded1{
 					Contents: ignition_config_types_32.Resource{
-						Source: ptr.To("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%3A6385%2Ffoo%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%3A5050%2Fbar%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0A%0Acollect_lldp%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0Ainspection_collectors%20%3D%20default%2Cextra-hardware%2Clogs%0Ainspection_dhcp_all_interfaces%20%3D%20True%0A")},
+						Source: ptr.To("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%3A6385%2Ffoo%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%3A5050%2Fbar%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0A%0Acollect_lldp%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0Ainspection_collectors%20%3D%20default%2Clogs%0Ainspection_dhcp_all_interfaces%20%3D%20True%0A")},
 					Mode: &expectedMode},
 			},
 		},
@@ -42,7 +42,7 @@ func TestIronicPythonAgentConf(t *testing.T) {
 				Node: ignition_config_types_32.Node{Path: "/etc/ironic-python-agent.conf", Overwrite: &expectedOverwrite},
 				FileEmbedded1: ignition_config_types_32.FileEmbedded1{
 					Contents: ignition_config_types_32.Resource{
-						Source: ptr.To("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%3A6385%2Ffoo%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%3A5050%2Fbar%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0A%0Acollect_lldp%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20%0Ainspection_collectors%20%3D%20default%2Cextra-hardware%2Clogs%0Ainspection_dhcp_all_interfaces%20%3D%20True%0A")},
+						Source: ptr.To("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%3A6385%2Ffoo%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%3A5050%2Fbar%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0A%0Acollect_lldp%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20%0Ainspection_collectors%20%3D%20default%2Clogs%0Ainspection_dhcp_all_interfaces%20%3D%20True%0A")},
 					Mode: &expectedMode},
 			},
 		},
@@ -55,7 +55,7 @@ func TestIronicPythonAgentConf(t *testing.T) {
 				Node: ignition_config_types_32.Node{Path: "/etc/ironic-python-agent.conf", Overwrite: &expectedOverwrite},
 				FileEmbedded1: ignition_config_types_32.FileEmbedded1{
 					Contents: ignition_config_types_32.Resource{
-						Source: ptr.To("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2F192.0.2.1%3A6385%2Chttps%3A%2F%2F%5B2001%3Adb8%3A%3A1%5D%3A6385%0Ainspection_callback_url%20%3D%20http%3A%2F%2F192.0.2.1%3A5050%2Fv1%2Fcontinue%2Chttps%3A%2F%2F%5B2001%3Adb8%3A%3A1%5D%3A5050%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0A%0Acollect_lldp%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0Ainspection_collectors%20%3D%20default%2Cextra-hardware%2Clogs%0Ainspection_dhcp_all_interfaces%20%3D%20True%0A")},
+						Source: ptr.To("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2F192.0.2.1%3A6385%2Chttps%3A%2F%2F%5B2001%3Adb8%3A%3A1%5D%3A6385%0Ainspection_callback_url%20%3D%20%0Ainsecure%20%3D%20True%0A%0Acollect_lldp%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0Ainspection_collectors%20%3D%20default%2Clogs%0Ainspection_dhcp_all_interfaces%20%3D%20True%0A")},
 					Mode: &expectedMode},
 			},
 		},

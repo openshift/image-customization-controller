@@ -55,11 +55,7 @@ inspection_collectors = default,extra-hardware,logs
 inspection_dhcp_all_interfaces = True
 `
 	ironicURLs := processURLs(b.ironicBaseURL, "", defaultIronicPort)
-	inspectorBase := b.ironicInspectorBaseURL
-	if inspectorBase == "" {
-		inspectorBase = b.ironicBaseURL
-	}
-	inspectorURLs := processURLs(inspectorBase, "/v1/continue", defaultInspectorPort)
+	inspectorURLs := processURLs(b.ironicInspectorBaseURL, "/v1/continue", defaultInspectorPort)
 	contents := fmt.Sprintf(template, ironicURLs, inspectorURLs, ironicInspectorVlanInterfaces)
 	return ignitionFileEmbed("/etc/ironic-python-agent.conf", 0644, false, []byte(contents))
 }
