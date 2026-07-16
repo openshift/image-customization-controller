@@ -49,14 +49,19 @@ func (bf *baseFileData) Size() (int64, error) {
 
 type baseIso struct {
 	baseFileData
+	kargs string
 }
 
-func newBaseIso(filename string) *baseIso {
-	return &baseIso{baseFileData{filename: filename}}
+func newBaseIso(filename string, kargs string) *baseIso {
+	return &baseIso{baseFileData: baseFileData{filename: filename}, kargs: kargs}
 }
 
 func (biso *baseIso) InsertIgnition(ignition *isoeditor.IgnitionContent) (isoeditor.ImageReader, error) {
-	return isoeditor.NewRHCOSStreamReader(biso.filename, ignition, nil, nil)
+	var kargsBytes []byte
+	if biso.kargs != "" {
+		kargsBytes = []byte(biso.kargs)
+	}
+	return isoeditor.NewRHCOSStreamReader(biso.filename, ignition, nil, kargsBytes)
 }
 
 type baseInitramfs struct {

@@ -54,7 +54,7 @@ func TestImageHandler(t *testing.T) {
 	imageServer := &imageFileSystem{
 		log: zap.New(zap.UseDevMode(true)),
 		isoFiles: map[streamArchKey]*baseIso{
-			{arch: "host"}: {baseFileData{filename: "dummyfile.iso", size: 12345}},
+			{arch: "host"}: {baseFileData: baseFileData{filename: "dummyfile.iso", size: 12345}},
 		},
 		baseURL: baseURL,
 		keys: map[string]string{
@@ -103,7 +103,7 @@ func TestNewImageHandler(t *testing.T) {
 		initramfsFiles: map[streamArchKey]*baseInitramfs{},
 	}
 
-	iso := newBaseIso("dummyfile.iso")
+	iso := newBaseIso("dummyfile.iso", "")
 	iso.size = 123456
 	ifs.isoFiles[streamArchKey{arch: "host"}] = iso
 
@@ -159,7 +159,7 @@ func TestNewImageHandlerStatic(t *testing.T) {
 		initramfsFiles: map[streamArchKey]*baseInitramfs{},
 	}
 
-	iso := newBaseIso("dummyfile.iso")
+	iso := newBaseIso("dummyfile.iso", "")
 	iso.size = 123456
 	ifs.isoFiles[streamArchKey{arch: "host"}] = iso
 
