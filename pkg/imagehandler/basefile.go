@@ -61,7 +61,14 @@ func (biso *baseIso) InsertIgnition(ignition *isoeditor.IgnitionContent) (isoedi
 	if biso.kargs != "" {
 		kargsBytes = []byte(biso.kargs)
 	}
-	return isoeditor.NewRHCOSStreamReader(biso.filename, ignition, nil, kargsBytes)
+	reader, err := isoeditor.NewRHCOSStreamReader(biso.filename, ignition, nil, kargsBytes)
+	if err != nil && kargsBytes != nil {
+		// The kargs embed area may already be occupied (e.g. the installer
+		// embedded console= params into this ISO). Fall back to serving the
+		// ISO without kargs modification rather than failing entirely.
+		reader, err = isoeditor.NewRHCOSStreamReader(biso.filename, ignition, nil, nil)
+	}
+	return reader, err
 }
 
 type baseInitramfs struct {
