@@ -1864,7 +1864,6 @@ k8s.io/utils/internal/third_party/forked/golang/golang-lru
 k8s.io/utils/internal/third_party/forked/golang/net
 k8s.io/utils/lru
 k8s.io/utils/net
-k8s.io/utils/pointer
 k8s.io/utils/ptr
 k8s.io/utils/trace
 # mvdan.cc/gofumpt v0.8.0
