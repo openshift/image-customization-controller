@@ -35,7 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	metal3iocontroller "github.com/metal3-io/baremetal-operator/controllers/metal3.io"
+	metal3iocontroller "github.com/metal3-io/baremetal-operator/pkg/controllers"
 	"github.com/metal3-io/baremetal-operator/pkg/secretutils"
 	"github.com/openshift/image-customization-controller/pkg/env"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
