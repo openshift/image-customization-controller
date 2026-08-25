@@ -40,20 +40,14 @@ var (
 	log = ctrl.Log.WithName("static-server")
 )
 
-func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageServer imagehandler.ImageHandler) error {
-	registries, err := env.RegistriesConf()
+func loadStaticNMState(fsys fs.FS, inputs *env.EnvInputs, nmstateDir string, imageServer imagehandler.ImageHandler) error {
+	registries, err := inputs.RegistriesConf()
 	if err != nil {
 		return err
 	}
 
-	// If not defined via env var, look for the mounted secret file
-	pullSecret := env.IronicAgentPullSecret
-	if env.IronicAgentPullSecret == "" {
-		pullSecretRaw, err := fs.ReadFile(fsys, "run/secrets/pull-secret")
-		if err != nil {
-			return errors.Wrap(err, "unable to read secret")
-		}
-		pullSecret = string(pullSecretRaw)
+	if err := inputs.LoadIronicAgentPullSecret(fsys); err != nil {
+		return err
 	}
 
 	nmstateDir = strings.Trim(nmstateDir, "/")
@@ -63,8 +57,8 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 	}
 
 	additionalNTPServers := []string{}
-	if env.AdditionalNTPServers != "" {
-		additionalNTPServers = strings.Split(env.AdditionalNTPServers, ",")
+	if inputs.AdditionalNTPServers != "" {
+		additionalNTPServers = strings.Split(inputs.AdditionalNTPServers, ",")
 	}
 
 	for _, f := range files {
@@ -77,19 +71,19 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 		}
 		hostname := strings.TrimSuffix(f.Name(), path.Ext(f.Name()))
 		igBuilder, err := ignition.New(b, registries,
-			env.IronicBaseURL,
-			env.IronicInspectorBaseURL,
-			env.IronicAgentImage,
-			pullSecret,
-			env.IronicRAMDiskSSHKey,
-			env.IpOptions,
-			env.HttpProxy,
-			env.HttpsProxy,
-			env.NoProxy,
+			inputs.IronicBaseURL,
+			inputs.IronicInspectorBaseURL,
+			inputs.IronicAgentImage,
+			inputs.IronicAgentPullSecret,
+			inputs.IronicRAMDiskSSHKey,
+			inputs.IpOptions,
+			inputs.HttpProxy,
+			inputs.HttpsProxy,
+			inputs.NoProxy,
 			hostname,
-			env.IronicAgentVlanInterfaces,
+			inputs.IronicAgentVlanInterfaces,
 			additionalNTPServers,
-			env.CaBundle,
+			inputs.CaBundle,
 		)
 		if err != nil {
 			return errors.WithMessage(err, "failed to configure ignition")

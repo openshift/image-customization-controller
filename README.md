@@ -40,7 +40,6 @@ the Ignition:
 
 - `IRONIC_BASE_URL`
 - `IRONIC_INSPECTOR_BASE_URL`
-- `IRONIC_AGENT_PULL_SECRET`
 - `IRONIC_AGENT_VLAN_INTERFACES`
 - `IRONIC_RAMDISK_SSH_KEY`
 - `REGISTRIES_CONF_PATH`
@@ -49,6 +48,9 @@ the Ignition:
 - `HTTPS_PROXY`
 - `NO_PROXY`
 - `ADDITIONAL_NTP_SERVERS` --- comma delimited list
+
+The Ironic agent pull secret is read from `/run/secrets/pull-secret` (a volume
+mount provided by cluster-baremetal-operator or the installer).
 
 ### Running the Controller
 
