@@ -67,7 +67,9 @@ Handles environment configuration via `envconfig`. Required variables:
 - `DEPLOY_INITRD` - Path to CoreOS initramfs
 - `IRONIC_AGENT_IMAGE` - IPA container image pullspec
 
-Optional variables: `IRONIC_BASE_URL`, `IRONIC_INSPECTOR_BASE_URL`, `IRONIC_AGENT_PULL_SECRET`, `IRONIC_RAMDISK_SSH_KEY`, `REGISTRIES_CONF_PATH`, `IP_OPTIONS`, `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `ADDITIONAL_NTP_SERVERS`, `CA_BUNDLE`
+Optional variables: `IRONIC_BASE_URL`, `IRONIC_INSPECTOR_BASE_URL`, `IRONIC_RAMDISK_SSH_KEY`, `REGISTRIES_CONF_PATH`, `IP_OPTIONS`, `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `ADDITIONAL_NTP_SERVERS`, `CA_BUNDLE`
+
+The Ironic agent pull secret is loaded from `/run/secrets/pull-secret`.
 
 ### `pkg/ignition`
 Generates Ignition v3.2 configurations containing:

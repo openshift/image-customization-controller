@@ -59,7 +59,7 @@ func TestLoadStaticNMState(t *testing.T) {
 	}
 
 	fs := fstest.MapFS{
-		"run/secrets/pull-secret": {},
+		"run/secrets/pull-secret": {Data: []byte("from-file")},
 		"tmp/nmstate/nm0":         {},
 		"tmp/nmstate/nm1":         {},
 		"tmp/nmstate/nm2":         {},
@@ -70,5 +70,21 @@ func TestLoadStaticNMState(t *testing.T) {
 	}
 	if !reflect.DeepEqual(fifs.imagesServed, []string{"nm0.iso", "nm0.initramfs", "nm1.iso", "nm1.initramfs", "nm2.iso", "nm2.initramfs"}) {
 		t.Errorf("loadStaticNMState() images = %v", fifs.imagesServed)
+	}
+}
+
+func TestLoadStaticNMStateRequiresPullSecretFile(t *testing.T) {
+	env := &env.EnvInputs{
+		DeployISO:        "foo.iso",
+		IronicBaseURL:    "http://example.com",
+		IronicAgentImage: "quay.io/tantsur/ironic-agent",
+	}
+	fs := fstest.MapFS{
+		"tmp/nmstate/nm0": {},
+	}
+
+	err := loadStaticNMState(fs, env, "/tmp/nmstate/", &fakeImageFileSystem{})
+	if err == nil {
+		t.Fatal("expected error when pull secret file is missing")
 	}
 }
