@@ -3,8 +3,8 @@ module github.com/openshift/image-customization-controller
 go 1.26.0
 
 require (
-	github.com/coreos/ignition/v2 v2.12.0
-	github.com/coreos/vcontext v0.0.0-20210407161507-4ee6c745c8bd
+	github.com/coreos/ignition/v2 v2.14.0
+	github.com/coreos/vcontext v0.0.0-20211021162308-f1dbbca7bef4
 	github.com/go-logr/logr v1.4.3
 	github.com/golangci/golangci-lint/v2 v2.1.6
 	github.com/google/go-cmp v0.7.0
@@ -15,7 +15,7 @@ require (
 	github.com/openshift/assisted-image-service v0.0.0-20230508133451-c15a62b72155
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.11.1
-	github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb
+	github.com/vincent-petithory/dataurl v1.0.0
 	k8s.io/apimachinery v0.35.7
 	k8s.io/client-go v0.35.7
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
@@ -210,7 +210,7 @@ require (
 	github.com/timonwong/loggercheck v0.11.0 // indirect
 	github.com/tomarrell/wrapcheck/v2 v2.11.0 // indirect
 	github.com/tommy-muehle/go-mnd/v2 v2.5.1 // indirect
-	github.com/ulikunitz/xz v0.5.10 // indirect
+	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/ultraware/funlen v0.2.0 // indirect
 	github.com/ultraware/whitespace v0.2.0 // indirect
 	github.com/uudashr/gocognit v1.2.0 // indirect
