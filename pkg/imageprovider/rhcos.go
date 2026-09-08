@@ -75,6 +75,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 		ip.EnvInputs.IronicAgentVlanInterfaces,
 		additionalNTPServers,
 		ip.EnvInputs.CaBundle,
+		ip.EnvInputs.IronicCaBundle,
 	)
 	if err != nil {
 		return nil, imageprovider.BuildInvalidError(err)

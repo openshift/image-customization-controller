@@ -13,6 +13,7 @@ import (
 const (
 	defaultIronicPort    = "6385"
 	defaultInspectorPort = "5050"
+	ironicCaBundlePath   = "/etc/pki/ca-trust/source/anchors/ironic-ca.crt"
 )
 
 func processURLs(baseURL, defaultPath, defaultPort string) string {
@@ -47,12 +48,16 @@ func (b *ignitionBuilder) IronicAgentConf(ironicInspectorVlanInterfaces string) 
 [DEFAULT]
 api_url = %s
 inspection_callback_url = %s
-insecure = True
+insecure = %s
 enable_vlan_interfaces = %s
 `
 	ironicURLs := processURLs(b.ironicBaseURL, "", defaultIronicPort)
 	inspectorURLs := processURLs(b.ironicInspectorBaseURL, "/v1/continue", defaultInspectorPort)
-	contents := fmt.Sprintf(template, ironicURLs, inspectorURLs, ironicInspectorVlanInterfaces)
+	insecure := "True"
+	if b.ironicCaBundleFile != "" {
+		insecure = "False"
+	}
+	contents := fmt.Sprintf(template, ironicURLs, inspectorURLs, insecure, ironicInspectorVlanInterfaces)
 	return ignitionFileEmbed("/etc/ironic-python-agent.conf", 0644, false, []byte(contents))
 }
 
@@ -60,6 +65,12 @@ func (b *ignitionBuilder) IronicAgentService(copyNetwork bool) ignition_config_t
 	flags := ""
 	if b.ironicAgentPullSecret != "" {
 		flags += " --authfile=/etc/authfile.json"
+	}
+	caMount := ""
+	caEnvironment := ""
+	if b.ironicCaBundleFile != "" {
+		caMount = fmt.Sprintf(" --mount type=bind,src=%s,dst=%s,ro", ironicCaBundlePath, ironicCaBundlePath)
+		caEnvironment = fmt.Sprintf(" --env REQUESTS_CA_BUNDLE=%s --env SSL_CERT_FILE=%s", ironicCaBundlePath, ironicCaBundlePath)
 	}
 
 	unitTemplate := `[Unit]
@@ -76,13 +87,13 @@ RestartSec=5
 StartLimitIntervalSec=0
 Type=notify
 ExecStartPre=/bin/rm -f %%t/%%n.ctr-id
-ExecStart=/bin/podman run --detach --cgroups=no-conmon --sdnotify=conmon --rm --cidfile=%%t/%%n.ctr-id --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --uts=host --env "IPA_COREOS_IP_OPTIONS=%s" --env IPA_COREOS_COPY_NETWORK=%v --env "IPA_DEFAULT_HOSTNAME=%s" %s --name ironic-agent %s
+ExecStart=/bin/podman run --detach --cgroups=no-conmon --sdnotify=conmon --rm --cidfile=%%t/%%n.ctr-id --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --uts=host --env "IPA_COREOS_IP_OPTIONS=%s" --env IPA_COREOS_COPY_NETWORK=%v --env "IPA_DEFAULT_HOSTNAME=%s"%s%s %s --name ironic-agent %s
 ExecStop=/usr/bin/podman stop --ignore --cidfile=%%t/%%n.ctr-id
 ExecStopPost=/usr/bin/podman rm -f --ignore --cidfile=%%t/%%n.ctr-id
 [Install]
 WantedBy=multi-user.target
 `
-	contents := fmt.Sprintf(unitTemplate, b.httpProxy, b.httpsProxy, b.noProxy, b.ipOptions, copyNetwork, b.hostname, flags, b.ironicAgentImage)
+	contents := fmt.Sprintf(unitTemplate, b.httpProxy, b.httpsProxy, b.noProxy, b.ipOptions, copyNetwork, b.hostname, caMount, caEnvironment, flags, b.ironicAgentImage)
 
 	return ignition_config_types_32.Unit{
 		Name:     "ironic-agent.service",
