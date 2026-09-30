@@ -35,6 +35,7 @@ type EnvInputs struct {
 	NoProxy                   string `envconfig:"NO_PROXY"`
 	AdditionalNTPServers      string `envconfig:"ADDITIONAL_NTP_SERVERS"`
 	CaBundle                  string `envconfig:"CA_BUNDLE"`
+	IronicCaBundle            string `envconfig:"IRONIC_CA_BUNDLE"`
 	IronicRootfsURL           string `envconfig:"IRONIC_ROOTFS_URL"`
 }
 

@@ -73,6 +73,16 @@ func TestIronicPythonAgentConf(t *testing.T) {
 	}
 }
 
+func TestIronicPythonAgentConfWithCABundle(t *testing.T) {
+	b := &ignitionBuilder{
+		ironicBaseURL:      "https://ironic.example.com",
+		ironicCaBundleFile: "/certs/ironic/ca.crt",
+	}
+
+	file := b.IronicAgentConf("")
+	assert.Contains(t, *file.Contents.Source, "insecure%20%3D%20False")
+}
+
 func TestIronicAgentService(t *testing.T) {
 	tests := []struct {
 		name                  string
@@ -125,6 +135,18 @@ func TestIronicAgentService(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIronicAgentServiceWithCABundle(t *testing.T) {
+	b := &ignitionBuilder{
+		ironicAgentImage:   "quay.io/example/ipa:latest",
+		ironicCaBundleFile: "/certs/ironic/ca.crt",
+	}
+
+	contents := *b.IronicAgentService(false).Contents
+	assert.Contains(t, contents, "--mount type=bind,src="+ironicCaBundlePath+",dst="+ironicCaBundlePath+",ro")
+	assert.Contains(t, contents, "--env REQUESTS_CA_BUNDLE="+ironicCaBundlePath)
+	assert.Contains(t, contents, "--env SSL_CERT_FILE="+ironicCaBundlePath)
 }
 
 func TestProcessURLs(t *testing.T) {
