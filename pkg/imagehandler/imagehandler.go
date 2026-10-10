@@ -203,7 +203,7 @@ func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInp
 
 		switch osImage.kind {
 		case imageKindISO:
-			isoFiles[osImage.arch] = newBaseIso(filePath)
+			isoFiles[osImage.arch] = newBaseIso(filePath, envInputs.IpOptions)
 		case imageKindInitramfs:
 			initramfsFiles[osImage.arch] = newBaseInitramfs(filePath)
 		case imageKindKernel:
