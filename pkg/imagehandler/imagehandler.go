@@ -1,0 +1,402 @@
+/*
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+package imagehandler
+
+import (
+	"fmt"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+
+	"github.com/go-logr/logr"
+	"github.com/google/uuid"
+
+	"github.com/openshift/image-customization-controller/pkg/env"
+)
+
+const (
+	hostArchitectureKey = "host"
+)
+
+// matchArchFilename attempts to match a target filename against a base filename.
+// Returns "host" for exact matches, the architecture for pattern matches, or nil if no match.
+func matchArchFilename(baseFilename, targetFilename string) *string {
+	if baseFilename == "" {
+		return nil
+	}
+
+	if targetFilename == baseFilename {
+		arch := hostArchitectureKey
+		return &arch
+	}
+
+	base := filepath.Base(baseFilename)
+	ext := filepath.Ext(base)
+	baseName := strings.TrimSuffix(base, ext)
+
+	// Create pattern: basename[_.]ARCH.extension
+	patternStr := fmt.Sprintf(`%s[_.](\w+)%s`, regexp.QuoteMeta(baseName), regexp.QuoteMeta(ext))
+	pattern := regexp.MustCompile(patternStr)
+
+	matches := pattern.FindStringSubmatch(filepath.Base(targetFilename))
+	if len(matches) == 2 {
+		arch := matches[1]
+		return &arch
+	}
+
+	return nil
+}
+
+type imageKind int
+
+const (
+	imageKindISO imageKind = iota
+	imageKindInitramfs
+	imageKindKernel
+)
+
+type osImage struct {
+	filename string
+	arch     string
+	kind     imageKind
+}
+
+func loadOSImage(envInputs *env.EnvInputs, filename string) (osImage, error) {
+	if arch := matchArchFilename(envInputs.DeployISO, filename); arch != nil {
+		return osImage{
+			filename: filename,
+			arch:     *arch,
+			kind:     imageKindISO,
+		}, nil
+	}
+
+	if arch := matchArchFilename(envInputs.DeployInitrd, filename); arch != nil {
+		return osImage{
+			filename: filename,
+			arch:     *arch,
+			kind:     imageKindInitramfs,
+		}, nil
+	}
+
+	if arch := matchArchFilename(envInputs.DeployKernel, filename); arch != nil {
+		return osImage{
+			filename: filename,
+			arch:     *arch,
+			kind:     imageKindKernel,
+		}, nil
+	}
+
+	return osImage{}, fmt.Errorf("failed to load os image name: %s", filename)
+}
+
+type InvalidBaseImageError struct {
+	cause error
+}
+
+func (ie InvalidBaseImageError) Error() string {
+	return "Base Image not available"
+}
+
+func (ie InvalidBaseImageError) Unwrap() error {
+	return ie.cause
+}
+
+// imageFileSystem is an http.FileSystem that creates a virtual filesystem of
+// host images.
+type imageFileSystem struct {
+	isoFiles       map[string]*baseIso
+	initramfsFiles map[string]*baseInitramfs
+	kernelFiles    map[string]*baseKernel
+	baseURL        *url.URL
+	keys           map[string]string
+	images         map[string]*imageFile
+	mu             *sync.Mutex
+	log            logr.Logger
+}
+
+var _ ImageHandler = &imageFileSystem{}
+var _ http.FileSystem = &imageFileSystem{}
+
+type ImageHandler interface {
+	FileSystem() http.FileSystem
+	ServeImage(key string, arch string, ignitionContent []byte, initramfs, static bool) (string, error)
+	ServeKernel(arch string) (string, error)
+	RemoveImage(key string)
+	HasImagesForArchitecture(arch string) bool
+}
+
+func findOSImageCandidates(logger logr.Logger, envInputs *env.EnvInputs, filePaths []string) []string {
+	var searchDirs []string
+
+	deployPaths := []string{envInputs.DeployISO, envInputs.DeployInitrd}
+	if envInputs.DeployKernel != "" {
+		deployPaths = append(deployPaths, envInputs.DeployKernel)
+	}
+
+	if envInputs.ImageSharedDir != "" {
+		searchDirs = append(searchDirs, envInputs.ImageSharedDir)
+		for _, p := range deployPaths {
+			if filepath.Dir(p) != envInputs.ImageSharedDir {
+				filePaths = append(filePaths, p)
+			}
+		}
+	} else {
+		dirSet := make(map[string]bool)
+		for _, p := range deployPaths {
+			dirSet[filepath.Dir(p)] = true
+		}
+		for dir := range dirSet {
+			searchDirs = append(searchDirs, dir)
+		}
+	}
+
+	for _, searchDir := range searchDirs {
+		imageFiles, err := os.ReadDir(searchDir)
+		if err != nil {
+			logger.Info("failed to read directory, continuing", "dir", searchDir, "error", err)
+			continue
+		}
+		logger.Info("reading image files", "dir", searchDir, "len", len(imageFiles))
+		for _, imageFile := range imageFiles {
+			fullPath := path.Join(searchDir, imageFile.Name())
+			filePaths = append(filePaths, fullPath)
+		}
+	}
+
+	return filePaths
+}
+
+func NewImageHandler(logger logr.Logger, baseURL *url.URL, envInputs *env.EnvInputs) (ImageHandler, error) {
+	filePaths := findOSImageCandidates(logger, envInputs, nil)
+
+	isoFiles := map[string]*baseIso{}
+	initramfsFiles := map[string]*baseInitramfs{}
+	kernelFiles := map[string]*baseKernel{}
+
+	logger.Info("processing image files", "total", len(filePaths))
+	for _, filePath := range filePaths {
+		logger.Info("load image", "file", filePath)
+
+		osImage, err := loadOSImage(envInputs, filePath)
+		if err != nil {
+			logger.Info("failed to load os image, continuing", "file", filePath)
+			continue
+		}
+
+		logger.Info("image loaded", "filename", osImage.filename, "arch", osImage.arch, "kind", osImage.kind)
+
+		switch osImage.kind {
+		case imageKindISO:
+			isoFiles[osImage.arch] = newBaseIso(filePath)
+		case imageKindInitramfs:
+			initramfsFiles[osImage.arch] = newBaseInitramfs(filePath)
+		case imageKindKernel:
+			kernelFiles[osImage.arch] = newBaseKernel(filePath)
+		}
+	}
+
+	return &imageFileSystem{
+		log:            logger,
+		isoFiles:       isoFiles,
+		initramfsFiles: initramfsFiles,
+		kernelFiles:    kernelFiles,
+		baseURL:        baseURL,
+		keys:           map[string]string{},
+		images:         map[string]*imageFile{},
+		mu:             &sync.Mutex{},
+	}, nil
+}
+
+func (f *imageFileSystem) FileSystem() http.FileSystem {
+	return f
+}
+
+func (f *imageFileSystem) getBaseImage(arch string, initramfs bool) baseFile {
+	if arch == "" {
+		arch = hostArchitectureKey
+	}
+
+	f.log.Info("getBaseImage", "arch", arch, "initramfs", initramfs)
+
+	getFile := func(arch string) baseFile {
+		if initramfs {
+			if file, exists := f.initramfsFiles[arch]; exists {
+				return file
+			}
+		} else {
+			if file, exists := f.isoFiles[arch]; exists {
+				return file
+			}
+		}
+		return nil
+	}
+
+	if file := getFile(arch); file != nil {
+		return file
+	}
+
+	if arch == env.HostArchitecture() {
+		if file := getFile(hostArchitectureKey); file != nil {
+			return file
+		}
+	}
+
+	return nil
+}
+
+func (f *imageFileSystem) getKernel(arch string) baseFile {
+	if arch == "" {
+		arch = hostArchitectureKey
+	}
+
+	f.log.Info("getKernel", "arch", arch)
+
+	getFile := func(arch string) baseFile {
+		if file, exists := f.kernelFiles[arch]; exists {
+			return file
+		}
+		return nil
+	}
+
+	if file := getFile(arch); file != nil {
+		return file
+	}
+
+	if arch == env.HostArchitecture() {
+		if file := getFile(hostArchitectureKey); file != nil {
+			return file
+		}
+	}
+
+	return nil
+}
+
+func (f *imageFileSystem) ServeKernel(arch string) (string, error) {
+	kernel := f.getKernel(arch)
+	if kernel == nil {
+		return "", nil
+	}
+
+	size, err := kernel.Size()
+	if err != nil {
+		return "", err
+	}
+
+	key := fmt.Sprintf("kernel-%s", arch)
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if img, exists := f.images[key]; exists {
+		p, err := url.Parse(fmt.Sprintf("/%s", img.name))
+		if err != nil {
+			return "", err
+		}
+		return f.baseURL.ResolveReference(p).String(), nil
+	}
+
+	name := key
+	p, err := url.Parse(fmt.Sprintf("/%s", name))
+	if err != nil {
+		return "", err
+	}
+
+	f.keys[name] = key
+	f.images[key] = &imageFile{
+		name:   name,
+		arch:   arch,
+		size:   size,
+		kernel: true,
+	}
+
+	return f.baseURL.ResolveReference(p).String(), nil
+}
+
+func (f *imageFileSystem) HasImagesForArchitecture(arch string) bool {
+	return f.getBaseImage(arch, false) != nil && f.getBaseImage(arch, true) != nil
+}
+
+func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {
+	if img, exists := f.images[key]; exists {
+		return img.name, nil
+	}
+	rand, err := uuid.NewRandom()
+	if err == nil {
+		name = rand.String()
+	}
+	return
+}
+
+func (f *imageFileSystem) ServeImage(key string, arch string, ignitionContent []byte, initramfs, static bool) (string, error) {
+	f.log.Info("ServeImage")
+	baseImage := f.getBaseImage(arch, initramfs)
+
+	size, err := baseImage.Size()
+	if err != nil {
+		return "", InvalidBaseImageError{cause: err}
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	name := key
+	if !static {
+		name, err = f.getNameForKey(key)
+		if err != nil {
+			return "", err
+		}
+	}
+	p, err := url.Parse(fmt.Sprintf("/%s", name))
+	if err != nil {
+		return "", err
+	}
+
+	if _, exists := f.images[key]; !exists {
+		f.keys[name] = key
+		f.images[key] = &imageFile{
+			name:            name,
+			arch:            arch,
+			size:            size,
+			ignitionContent: ignitionContent,
+			initramfs:       initramfs,
+		}
+	}
+
+	return f.baseURL.ResolveReference(p).String(), nil
+}
+
+func (f *imageFileSystem) imageFileByName(name string) *imageFile {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if key, exists := f.keys[name]; exists {
+		return f.images[key]
+	}
+	return nil
+}
+
+func (f *imageFileSystem) RemoveImage(key string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if img, exists := f.images[key]; exists {
+		delete(f.keys, img.name)
+		delete(f.images, key)
+	}
+}
