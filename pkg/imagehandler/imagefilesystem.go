@@ -37,19 +37,15 @@ func (f *imageFileSystem) Seek(offset int64, whence int) (int64, error) {
 }
 
 func (f *imageFileSystem) Readdir(n int) ([]fs.FileInfo, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	result := []fs.FileInfo{}
-	for _, im := range f.images {
-		result = append(result, im)
-	}
-	return result, nil
+	// NOTE(dtantsur): security: do not allow listing images
+	return nil, fs.ErrPermission
 }
 
 func (f *imageFileSystem) Open(name string) (http.File, error) {
 	f.log.Info("Open", "path", name)
 	if name == "/" {
-		return f, nil
+		// NOTE(dtantsur): security: do not allow listing images
+		return nil, fs.ErrPermission
 	}
 
 	im := f.imageFileByName(path.Base(name))
