@@ -14,7 +14,9 @@ limitations under the License.
 package imagehandler
 
 import (
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -45,10 +47,29 @@ func TestImageHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	baseURL, _ := url.Parse("http://localhost:8080")
-
 	rr := httptest.NewRecorder()
-	imageServer := &imageFileSystem{
+	imageServer := testImageFileSystem()
+
+	handler := http.FileServer(imageServer.FileSystem())
+	handler.ServeHTTP(rr, req)
+
+	// Check the status code is what we expect.
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v",
+			status, http.StatusOK)
+	}
+
+	// Check the response body is what we expect.
+	expected := `aiosetnarsetin`
+	if rr.Body.String() != expected {
+		t.Errorf("handler returned unexpected body: got %v want %v",
+			rr.Body.String(), expected)
+	}
+}
+
+func testImageFileSystem() *imageFileSystem {
+	baseURL, _ := url.Parse("http://localhost:8080")
+	return &imageFileSystem{
 		log: zap.New(zap.UseDevMode(true)),
 		isoFiles: map[string]*baseIso{
 			"host": {baseFileData{filename: "dummyfile.iso", size: 12345}},
@@ -67,21 +88,48 @@ func TestImageHandler(t *testing.T) {
 		},
 		mu: &sync.Mutex{},
 	}
+}
 
+func TestImageHandlerRejectsDirectoryListing(t *testing.T) {
+	imageServer := testImageFileSystem()
 	handler := http.FileServer(imageServer.FileSystem())
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	handler.ServeHTTP(rr, req)
 
-	// Check the status code is what we expect.
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("handler returned wrong status code: got %v want %v",
-			status, http.StatusOK)
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("GET / returned status %v, want %v", rr.Code, http.StatusForbidden)
+	}
+	if strings.Contains(rr.Body.String(), "host-xyz-45-uuid") {
+		t.Errorf("GET / leaked image name in body: %s", rr.Body.String())
 	}
 
-	// Check the response body is what we expect.
-	expected := `aiosetnarsetin`
-	if rr.Body.String() != expected {
-		t.Errorf("handler returned unexpected body: got %v want %v",
-			rr.Body.String(), expected)
+	rr = httptest.NewRecorder()
+	req, err = http.NewRequest("GET", "/host-xyz-45-uuid", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("GET of known image returned status %v, want %v", rr.Code, http.StatusOK)
+	}
+}
+
+func TestImageFileSystemOpenRootDenied(t *testing.T) {
+	imageServer := testImageFileSystem()
+
+	_, err := imageServer.Open("/")
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("Open(/) error = %v, want %v", err, fs.ErrPermission)
+	}
+
+	_, err = imageServer.Readdir(-1)
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("Readdir error = %v, want %v", err, fs.ErrPermission)
 	}
 }
 
