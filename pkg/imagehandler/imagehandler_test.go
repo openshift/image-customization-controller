@@ -14,7 +14,9 @@ limitations under the License.
 package imagehandler
 
 import (
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -43,26 +45,8 @@ func TestImageHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	baseURL, _ := url.Parse("http://localhost:8080")
-
 	rr := httptest.NewRecorder()
-	imageServer := &imageFileSystem{
-		log:     zap.New(zap.UseDevMode(true)),
-		isoFile: &baseIso{baseFileData{filename: "dummyfile.iso", size: 12345}},
-		baseURL: baseURL,
-		keys: map[string]string{
-			"host-xyz-45-uuid": "host-xyz-45.iso",
-		},
-		images: map[string]*imageFile{
-			"host-xyz-45.iso": {
-				name:            "host-xyz-45-uuid",
-				size:            12345,
-				ignitionContent: []byte("asietonarst"),
-				imageReader:     nopCloser(strings.NewReader("aiosetnarsetin")),
-			},
-		},
-		mu: &sync.Mutex{},
-	}
+	imageServer := testImageFileSystem()
 
 	handler := http.FileServer(imageServer.FileSystem())
 	handler.ServeHTTP(rr, req)
@@ -78,6 +62,71 @@ func TestImageHandler(t *testing.T) {
 	if rr.Body.String() != expected {
 		t.Errorf("handler returned unexpected body: got %v want %v",
 			rr.Body.String(), expected)
+	}
+}
+
+func testImageFileSystem() *imageFileSystem {
+	baseURL, _ := url.Parse("http://localhost:8080")
+	return &imageFileSystem{
+		log:           zap.New(zap.UseDevMode(true)),
+		isoFile:       &baseIso{baseFileData{filename: "dummyfile.iso", size: 12345}},
+		initramfsFile: newBaseInitramfs("dummyfile.initramfs"),
+		baseURL:       baseURL,
+		keys: map[string]string{
+			"host-xyz-45-uuid": "host-xyz-45.iso",
+		},
+		images: map[string]*imageFile{
+			"host-xyz-45.iso": {
+				name:            "host-xyz-45-uuid",
+				size:            12345,
+				ignitionContent: []byte("asietonarst"),
+				imageReader:     nopCloser(strings.NewReader("aiosetnarsetin")),
+			},
+		},
+		mu: &sync.Mutex{},
+	}
+}
+
+func TestImageHandlerRejectsDirectoryListing(t *testing.T) {
+	imageServer := testImageFileSystem()
+	handler := http.FileServer(imageServer.FileSystem())
+
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("GET / returned status %v, want %v", rr.Code, http.StatusForbidden)
+	}
+	if strings.Contains(rr.Body.String(), "host-xyz-45-uuid") {
+		t.Errorf("GET / leaked image name in body: %s", rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	req, err = http.NewRequest("GET", "/host-xyz-45-uuid", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("GET of known image returned status %v, want %v", rr.Code, http.StatusOK)
+	}
+}
+
+func TestImageFileSystemOpenRootDenied(t *testing.T) {
+	imageServer := testImageFileSystem()
+
+	_, err := imageServer.Open("/")
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("Open(/) error = %v, want %v", err, fs.ErrPermission)
+	}
+
+	_, err = imageServer.Readdir(-1)
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("Readdir error = %v, want %v", err, fs.ErrPermission)
 	}
 }
 
