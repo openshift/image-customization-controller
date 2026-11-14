@@ -48,6 +48,10 @@ the Ignition:
 - `HTTPS_PROXY`
 - `NO_PROXY`
 - `ADDITIONAL_NTP_SERVERS` --- comma delimited list
+- `IRONIC_CA_BUNDLE` --- Controller-only path to the Ironic CA bundle. The
+  controller embeds this file in generated images and configures IPA to verify
+  Ironic's certificate using it. Without this setting, IPA retains its existing
+  insecure TLS behavior.
 
 The Ironic agent pull secret is read from `/run/secrets/pull-secret` (a volume
 mount provided by cluster-baremetal-operator or the installer).
@@ -65,6 +69,13 @@ The following command line flags are used for configuration:
   (Defaults to `:8084`.)
 - `-images-publish-addr` --- The address clients would access the images
   endpoint from. (Defaults to `http://127.0.0.1:8084`.)
+- `-images-tls-cert-file` --- TLS certificate file for the images endpoint.
+- `-images-tls-key-file` --- TLS private key file for the images endpoint.
+
+To serve images over HTTPS, provide both TLS files and set
+`-images-publish-addr` to an `https://` URL. The controller rejects incomplete TLS
+file pairs and HTTP publish URLs when TLS is enabled. Without either TLS file,
+the images endpoint continues to serve HTTP.
 
 ### Running statically
 

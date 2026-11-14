@@ -17,7 +17,9 @@ limitations under the License.
 package main
 
 import (
+	"errors"
 	"flag"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -126,12 +128,34 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 	return mgr.Start(ctrl.SetupSignalHandler())
 }
 
+// validateImagesTLS checks that the published URL and TLS files are consistent.
+func validateImagesTLS(publishURL *url.URL, certFile, keyFile string) error {
+	if (certFile == "") != (keyFile == "") {
+		return errors.New("both images-tls-cert-file and images-tls-key-file must be provided")
+	}
+	if certFile != "" && publishURL.Scheme != "https" {
+		return errors.New("images-publish-addr must use https when images TLS is enabled")
+	}
+	return nil
+}
+
+// serveImages serves the images endpoint using TLS when certificate files are configured.
+// The TLS configuration must be validated before calling this function.
+func serveImages(server *http.Server, listener net.Listener, certFile, keyFile string) error {
+	if certFile != "" {
+		return server.ServeTLS(listener, certFile, keyFile)
+	}
+	return server.Serve(listener)
+}
+
 func main() {
 	var watchNamespace string
 	var metricsBindAddr string
 	var devLogging bool
 	var imagesBindAddr string
 	var imagesPublishAddr string
+	var imagesTLSCertFile string
+	var imagesTLSKeyFile string
 
 	// From CAPI point of view, BMO should be able to watch all namespaces
 	// in case of a deployment that is not multi-tenant. If the deployment
@@ -145,21 +169,29 @@ func main() {
 		"The address the images endpoint binds to.")
 	flag.StringVar(&imagesPublishAddr, "images-publish-addr", "http://127.0.0.1:8084",
 		"The address clients would access the images endpoint from.")
+	flag.StringVar(&imagesTLSCertFile, "images-tls-cert-file", "",
+		"TLS certificate file for the images endpoint.")
+	flag.StringVar(&imagesTLSKeyFile, "images-tls-key-file", "",
+		"TLS private key file for the images endpoint.")
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(devLogging)))
 
 	version.Print(setupLog)
 
-	envInputs, err := env.New()
-	if err != nil {
-		setupLog.Error(err, "environment not provided")
-		os.Exit(1)
-	}
-
 	publishURL, err := url.Parse(imagesPublishAddr)
 	if err != nil {
 		setupLog.Error(err, "imagesPublishAddr is not parsable")
+		os.Exit(1)
+	}
+	if err := validateImagesTLS(publishURL, imagesTLSCertFile, imagesTLSKeyFile); err != nil {
+		setupLog.Error(err, "invalid images TLS configuration")
+		os.Exit(1)
+	}
+
+	envInputs, err := env.New()
+	if err != nil {
+		setupLog.Error(err, "environment not provided")
 		os.Exit(1)
 	}
 
@@ -173,17 +205,20 @@ func main() {
 		setupLog.Error(err, "failed to initialized image handler")
 		os.Exit(1)
 	}
-	http.Handle("/", http.FileServer(imageServer.FileSystem()))
+	listener, err := net.Listen("tcp", imagesBindAddr)
+	if err != nil {
+		setupLog.Error(err, "unable to listen on images endpoint")
+		os.Exit(1)
+	}
 
 	go func() {
 		server := &http.Server{
 			Addr:              imagesBindAddr,
+			Handler:           http.FileServer(imageServer.FileSystem()),
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 
-		err := server.ListenAndServe()
-
-		if err != nil {
+		if err := serveImages(server, listener, imagesTLSCertFile, imagesTLSKeyFile); err != nil {
 			setupLog.Error(err, "")
 			os.Exit(1)
 		}

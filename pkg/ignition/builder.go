@@ -29,9 +29,10 @@ type ignitionBuilder struct {
 	ironicAgentVlanInterfaces string
 	additionalNTPServers      []string
 	caBundleFile              string
+	ironicCaBundleFile        string
 }
 
-func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string, ironicAgentVlanInterfaces string, additionalNTPServers []string, caBundleFile string) (*ignitionBuilder, error) {
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string, ironicAgentVlanInterfaces string, additionalNTPServers []string, caBundleFile, ironicCaBundleFile string) (*ignitionBuilder, error) {
 	if ironicBaseURL == "" {
 		return nil, errors.New("ironicBaseURL is required")
 	}
@@ -55,6 +56,7 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicInspectorBaseU
 		ironicAgentVlanInterfaces: ironicAgentVlanInterfaces,
 		additionalNTPServers:      additionalNTPServers,
 		caBundleFile:              caBundleFile,
+		ironicCaBundleFile:        ironicCaBundleFile,
 	}, nil
 }
 
@@ -131,6 +133,15 @@ func (b *ignitionBuilder) GenerateConfig() (config ignition_config_types_32.Conf
 		}
 		config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
 			"/etc/pki/ca-trust/source/anchors/ca.crt",
+			0644, false, data))
+	}
+	if b.ironicCaBundleFile != "" {
+		data, err := os.ReadFile(b.ironicCaBundleFile)
+		if err != nil {
+			return config, err
+		}
+		config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
+			ironicCaBundlePath,
 			0644, false, data))
 	}
 

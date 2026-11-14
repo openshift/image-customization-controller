@@ -2,17 +2,20 @@ package ignition
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/vincent-petithory/dataurl"
+	"k8s.io/client-go/util/cert"
 )
 
 func TestGenerateStructure(t *testing.T) {
 	builder, err := New(nil, nil,
 		"http://ironic.example.com", "",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "", "", []string{}, "")
+		"", "", "", "", "", "", "", "", []string{}, "", "")
 	assert.NoError(t, err)
 
 	ignition, err := builder.GenerateConfig()
@@ -39,7 +42,7 @@ func TestGenerateWithMoreFields(t *testing.T) {
 		"http://ironic.example.com", "http://inspector.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
 		"pull secret", "SSH key", "ip=dhcp42",
-		"proxy me", "", "don't proxy me", "my-host", "", []string{}, file.Name())
+		"proxy me", "", "don't proxy me", "my-host", "", []string{}, file.Name(), "")
 	assert.NoError(t, err)
 
 	ignition, err := builder.GenerateConfig()
@@ -65,6 +68,81 @@ func TestGenerateWithMoreFields(t *testing.T) {
 	assert.Len(t, ignition.Passwd.Users[0].SSHAuthorizedKeys, 1)
 }
 
+func TestGenerateIronicCABundle(t *testing.T) {
+	caData, _, err := cert.GenerateSelfSignedCertKey("ironic.example.com", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caFile := filepath.Join(t.TempDir(), "ironic-ca.crt")
+	if err := os.WriteFile(caFile, caData, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		caFile    string
+		wantError bool
+	}{
+		{name: "CA embedded", caFile: caFile},
+		{name: "no CA"},
+		{name: "missing CA", caFile: filepath.Join(t.TempDir(), "missing.crt"), wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder, err := New(nil, nil,
+				"https://ironic.example.com", "",
+				"quay.io/openshift-release-dev/ironic-ipa-image",
+				"", "", "", "", "", "", "", "", nil, "", tt.caFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			config, err := builder.GenerateConfig()
+			if tt.wantError {
+				assert.ErrorIs(t, err, os.ErrNotExist)
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			files := make(map[string]string)
+			for _, file := range config.Storage.Files {
+				if !assert.NotNil(t, file.Contents.Source) {
+					t.FailNow()
+				}
+				data, err := dataurl.DecodeString(*file.Contents.Source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				files[file.Path] = string(data.Data)
+				if file.Path == ironicCaBundlePath {
+					if assert.NotNil(t, file.Mode) {
+						assert.Equal(t, 0644, *file.Mode)
+					}
+				}
+			}
+			assert.Contains(t, files, "/etc/ironic-python-agent.conf")
+			if !assert.Len(t, config.Systemd.Units, 1) || !assert.NotNil(t, config.Systemd.Units[0].Contents) {
+				t.FailNow()
+			}
+			service := *config.Systemd.Units[0].Contents
+			if tt.caFile == "" {
+				assert.NotContains(t, files, ironicCaBundlePath)
+				assert.Contains(t, files["/etc/ironic-python-agent.conf"], "insecure = True")
+				assert.NotContains(t, service, ironicCaBundlePath)
+				assert.NotContains(t, service, "REQUESTS_CA_BUNDLE")
+				assert.NotContains(t, service, "SSL_CERT_FILE")
+			} else {
+				assert.Equal(t, string(caData), files[ironicCaBundlePath])
+				assert.Contains(t, files["/etc/ironic-python-agent.conf"], "insecure = False")
+				assert.Contains(t, service, "--mount type=bind,src="+ironicCaBundlePath+",dst="+ironicCaBundlePath+",ro")
+				assert.Contains(t, service, "--env REQUESTS_CA_BUNDLE="+ironicCaBundlePath)
+				assert.Contains(t, service, "--env SSL_CERT_FILE="+ironicCaBundlePath)
+			}
+		})
+	}
+}
+
 func TestGenerateRegistries(t *testing.T) {
 	registries := `
 [[registry]]
@@ -78,7 +156,7 @@ func TestGenerateRegistries(t *testing.T) {
 	builder, err := New([]byte{}, []byte(registries),
 		"http://ironic.example.com", "",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "virthost", "", []string{}, "")
+		"", "", "", "", "", "", "virthost", "", []string{}, "", "")
 	if err != nil {
 		t.Fatalf("Unexpected error %v", err)
 	}
@@ -98,7 +176,7 @@ func TestGenerateIPAIdentificationFiles(t *testing.T) {
 	builder, err := New(nil, nil,
 		"http://ironic.example.com", "",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "", "", []string{}, "")
+		"", "", "", "", "", "", "", "", []string{}, "", "")
 	assert.NoError(t, err)
 
 	ignition, err := builder.GenerateConfig()
@@ -136,7 +214,7 @@ func TestGenerateIPAIdentificationWithDebuggingInfo(t *testing.T) {
 	builder, err := New(nil, nil,
 		"http://ironic.example.com", "http://inspector.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image:v4.17",
-		"", "", "", "", "", "", "my-hostname", "", []string{}, "")
+		"", "", "", "", "", "", "my-hostname", "", []string{}, "", "")
 	assert.NoError(t, err)
 
 	ignition, err := builder.GenerateConfig()
